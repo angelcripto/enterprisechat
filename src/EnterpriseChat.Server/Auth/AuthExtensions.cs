@@ -57,15 +57,20 @@ internal static class AuthExtensions
                 RoleClaimType = System.Security.Claims.ClaimTypes.Role
             };
 
-            // SignalR needs the bearer in the `access_token` query string because
-            // browser WebSocket APIs cannot set custom headers on the upgrade.
+            // Two cases where the browser cannot send the bearer in a header
+            // and we accept it via `?access_token=...` query string instead:
+            //   /hubs/*  — WebSocket upgrade rejects custom headers.
+            //   /files/* — <img src> / <a href> cannot set Authorization.
+            // Both paths are still hit with the same auth requirements.
             options.Events = new JwtBearerEvents
             {
                 OnMessageReceived = ctx =>
                 {
                     var accessToken = ctx.Request.Query["access_token"].ToString();
                     var path = ctx.HttpContext.Request.Path;
-                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    if (!string.IsNullOrEmpty(accessToken)
+                        && (path.StartsWithSegments("/hubs")
+                            || path.StartsWithSegments("/files")))
                     {
                         ctx.Token = accessToken;
                     }

@@ -10,9 +10,19 @@ export const router = createRouter({
     history: createWebHistory(),
     routes: [
         { path: "/login", name: "login", component: LoginView, meta: { public: true } },
-        { path: "/", name: "home", component: ChatView },
+
+        // All authenticated routes are rendered inside ChatView, which owns
+        // Sidebar + TopBar + RightPanel. ChatView decides which centre pane
+        // component to mount based on route.name (chat, inbox, mentions,
+        // drafts, saved, team) so the chrome doesn't remount between views.
+        { path: "/", name: "inbox", component: ChatView },
         { path: "/channels/:roomId", name: "channel", component: ChatView, props: true },
         { path: "/dm/:peerUserId", name: "dm", component: ChatView, props: true },
+        { path: "/mentions", name: "mentions", component: ChatView },
+        { path: "/drafts", name: "drafts", component: ChatView },
+        { path: "/saved", name: "saved", component: ChatView },
+        { path: "/teams/:name", name: "team", component: ChatView, props: true },
+
         { path: "/admin/license", name: "admin-license", component: AdminLicenseView },
         { path: "/:pathMatch(.*)*", redirect: "/" },
     ],
@@ -25,12 +35,11 @@ router.beforeEach((to: RouteLocationNormalized) => {
         return { name: "login", query: { redirect: to.fullPath } };
     }
     if (isPublic && auth.isAuthenticated) {
-        return { name: "home" };
+        return { name: "inbox" };
     }
     return true;
 });
 
-// When the API returns 401 we drop the session and force the login screen.
 setUnauthorizedHandler(() => {
     const auth = useAuthStore();
     auth.clear();

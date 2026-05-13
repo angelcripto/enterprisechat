@@ -12,6 +12,11 @@ import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
 import ChatWindow from "@/components/ChatWindow.vue";
 import RightPanel from "@/components/RightPanel.vue";
+import InboxView from "@/views/InboxView.vue";
+import MentionsView from "@/views/MentionsView.vue";
+import SavedView from "@/views/SavedView.vue";
+import DraftsView from "@/views/DraftsView.vue";
+import TeamView from "@/views/TeamView.vue";
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -33,29 +38,14 @@ const activeThread = computed<ThreadKey | null>(() => {
     return null;
 });
 
-function handleMessageReceived(m: ChatMessage): void {
-    messages.applyIncoming(m);
-}
+const centrePane = computed(() => route.name);
 
-function handlePresence(userId: number, isOnline: boolean): void {
-    users.applyPresence(userId, isOnline);
-}
-
-function handleMessageRead(serverId: number, byUserId: number): void {
-    messages.applyMessageRead(serverId, byUserId);
-}
-
-function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void {
-    messages.applyTyping(fromUserId, toUserId, roomId);
-}
-
-function handleLicenseDenied(reason: string): void {
-    connectError.value = `Conexión rechazada por licencia: ${reason}`;
-}
-
-function handleRoomMembership(_roomId: number, _userId: number, _joined: boolean): void {
-    void rooms.load();
-}
+function handleMessageReceived(m: ChatMessage): void { messages.applyIncoming(m); }
+function handlePresence(userId: number, isOnline: boolean): void { users.applyPresence(userId, isOnline); }
+function handleMessageRead(serverId: number, byUserId: number): void { messages.applyMessageRead(serverId, byUserId); }
+function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId); }
+function handleLicenseDenied(reason: string): void { connectError.value = `Conexión rechazada por licencia: ${reason}`; }
+function handleRoomMembership(_roomId: number, _userId: number, _joined: boolean): void { void rooms.load(); }
 
 onMounted(async () => {
     if (auth.userId === null) return;
@@ -69,10 +59,13 @@ onMounted(async () => {
         chatHub.on("OnLicenseDenied", handleLicenseDenied);
         chatHub.on("OnRoomMembershipChanged", handleRoomMembership);
         await Promise.all([rooms.load(), users.load(), license.load()]);
+        connecting.value = false;
+        if (activeThread.value !== null) {
+            try { await messages.loadHistory(activeThread.value); } catch { /* ignore */ }
+        }
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         connectError.value = `No se pudo conectar al servidor: ${msg}`;
-    } finally {
         connecting.value = false;
     }
 });
@@ -88,9 +81,9 @@ onBeforeUnmount(async () => {
 });
 
 watch(activeThread, async (key) => {
-    if (key === null) return;
-    await messages.loadHistory(key);
-}, { immediate: true });
+    if (key === null || connecting.value) return;
+    try { await messages.loadHistory(key); } catch { /* ignore */ }
+});
 </script>
 
 <template>
@@ -102,8 +95,15 @@ watch(activeThread, async (key) => {
             <div v-else-if="connectError" class="m-auto max-w-md text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
                 {{ connectError }}
             </div>
-            <ChatWindow v-else-if="activeThread !== null" :thread="activeThread" />
-            <div v-else class="m-auto text-slate-500 text-sm">Selecciona un canal o conversación.</div>
+            <template v-else>
+                <ChatWindow v-if="activeThread !== null" :thread="activeThread" />
+                <InboxView v-else-if="centrePane === 'inbox'" />
+                <MentionsView v-else-if="centrePane === 'mentions'" />
+                <SavedView v-else-if="centrePane === 'saved'" />
+                <DraftsView v-else-if="centrePane === 'drafts'" />
+                <TeamView v-else-if="centrePane === 'team'" />
+                <div v-else class="m-auto text-slate-500 text-sm">Selecciona un canal o conversación.</div>
+            </template>
         </main>
         <RightPanel class="row-start-2 border-l border-slate-200 overflow-hidden" :thread="activeThread" />
     </div>

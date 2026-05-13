@@ -1,105 +1,98 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Users, Briefcase, ChevronDown } from "lucide-vue-next";
+import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Briefcase, Shield } from "lucide-vue-next";
 import Avatar from "@/components/Avatar.vue";
+import WorkspaceMenu from "@/components/WorkspaceMenu.vue";
+import CreateChannelModal from "@/components/CreateChannelModal.vue";
+import InviteUserModal from "@/components/InviteUserModal.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useRoomsStore } from "@/stores/rooms";
 import { useUsersStore } from "@/stores/users";
 import { useLicenseStore } from "@/stores/license";
+import { useDraftsStore } from "@/stores/drafts";
 import { isProEdition } from "@/api/types";
-import { dialogPrompt, dialogConfirm, dialogError } from "@/dialogs";
 
 const auth = useAuthStore();
 const rooms = useRoomsStore();
 const users = useUsersStore();
 const license = useLicenseStore();
+const drafts = useDraftsStore();
 const route = useRoute();
 const router = useRouter();
 
 const otherUsers = computed(() => users.users.filter((u) => u.id !== auth.userId));
 const departments = computed(() => {
-    const names = new Set<string>();
+    const set = new Map<string, number>();
     for (const u of users.users) {
-        if (u.department) names.add(u.department);
+        if (u.department) set.set(u.department, (set.get(u.department) ?? 0) + 1);
     }
-    return [...names].sort();
+    return [...set.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 });
+
+const draftCount = computed(() => drafts.count);
+
+const channelModalOpen = ref(false);
+const inviteModalOpen = ref(false);
 
 function navigateRoom(id: number): void { void router.push({ name: "channel", params: { roomId: String(id) } }); }
 function navigateDm(id: number): void { void router.push({ name: "dm", params: { peerUserId: String(id) } }); }
 function isActiveRoom(id: number): boolean { return route.name === "channel" && route.params.roomId === String(id); }
 function isActiveDm(id: number): boolean { return route.name === "dm" && route.params.peerUserId === String(id); }
+function isActiveName(name: string): boolean { return route.name === name; }
 
-async function newRoom(): Promise<void> {
-    const name = await dialogPrompt({
-        title: "Nuevo canal",
-        placeholder: "p. ej. ventas",
-        validator: (v) => v.trim() === "" ? "Pon un nombre." : (v.length > 64 ? "Máximo 64 caracteres." : null),
-    });
-    if (name === null) return;
-    const isPrivate = await dialogConfirm({
-        title: "¿Canal privado?",
-        text: "Los canales privados solo son visibles para los miembros invitados.",
-        confirmText: "Privado",
-        cancelText: "Público",
-        icon: "question",
-    });
-    try {
-        const id = await rooms.create(name.trim(), isPrivate);
-        navigateRoom(id);
-    } catch (err) {
-        await dialogError("No se pudo crear el canal", err instanceof Error ? err.message : String(err));
-    }
+function onChannelCreated(roomId: number): void {
+    navigateRoom(roomId);
 }
 </script>
 
 <template>
     <nav class="h-full overflow-y-auto bg-white flex flex-col">
-        <header class="px-4 pt-4 pb-3 border-b border-slate-100">
-            <button type="button" class="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 text-left">
-                <span class="w-9 h-9 rounded-lg bg-blue-600 grid place-items-center text-white font-bold text-sm flex-shrink-0">EC</span>
-                <span class="flex-1 min-w-0">
-                    <strong class="block text-slate-900 truncate">{{ auth.fullName || 'EnterpriseChat' }}</strong>
-                    <span v-if="isProEdition(license.info)" class="text-[10px] font-bold uppercase tracking-wider text-blue-600">Plan Pro</span>
-                    <span v-else class="text-[10px] font-medium uppercase tracking-wider text-slate-400">Plan Free</span>
-                </span>
-                <ChevronDown class="w-4 h-4 text-slate-400 flex-shrink-0" />
-            </button>
+        <header class="px-3 pt-3 pb-2 border-b border-slate-100">
+            <WorkspaceMenu @invite="inviteModalOpen = true" />
         </header>
 
         <div class="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-5">
             <ul class="flex flex-col gap-0.5">
                 <li>
-                    <button type="button" @click="router.push('/')" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                    <router-link :to="{ name: 'inbox' }"
+                        :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                 isActiveName('inbox') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                         <Inbox class="w-4 h-4 text-slate-500" />
                         <span class="flex-1 text-left">Inicio</span>
-                    </button>
+                    </router-link>
                 </li>
                 <li>
-                    <button type="button" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                    <router-link :to="{ name: 'mentions' }"
+                        :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                 isActiveName('mentions') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                         <AtSign class="w-4 h-4 text-slate-500" />
                         <span class="flex-1 text-left">Menciones</span>
-                    </button>
+                    </router-link>
                 </li>
                 <li>
-                    <button type="button" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                    <router-link :to="{ name: 'drafts' }"
+                        :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                 isActiveName('drafts') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                         <FileText class="w-4 h-4 text-slate-500" />
                         <span class="flex-1 text-left">Borradores</span>
-                    </button>
+                        <span v-if="draftCount > 0" class="ml-auto text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full font-semibold">{{ draftCount }}</span>
+                    </router-link>
                 </li>
                 <li>
-                    <button type="button" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                    <router-link :to="{ name: 'saved' }"
+                        :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                 isActiveName('saved') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                         <Bookmark class="w-4 h-4 text-slate-500" />
                         <span class="flex-1 text-left">Guardados</span>
-                    </button>
+                    </router-link>
                 </li>
             </ul>
 
             <section>
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Canales</span>
-                    <button type="button" class="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100" @click="newRoom" aria-label="Nuevo canal">
+                    <button type="button" class="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100" @click="channelModalOpen = true" aria-label="Nuevo canal">
                         <Plus class="w-4 h-4" />
                     </button>
                 </header>
@@ -112,16 +105,13 @@ async function newRoom(): Promise<void> {
                             <span class="flex-1 truncate">{{ r.name }}</span>
                         </button>
                     </li>
-                    <li v-if="rooms.memberRooms.length === 0" class="text-xs text-slate-400 px-2.5 py-1">
-                        No estás en ningún canal aún.
-                    </li>
+                    <li v-if="rooms.memberRooms.length === 0" class="text-xs text-slate-400 px-2.5 py-1">No estás en ningún canal aún.</li>
                 </ul>
             </section>
 
             <section>
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Mensajes directos</span>
-                    <Plus class="w-4 h-4 text-slate-300" />
                 </header>
                 <ul class="flex flex-col gap-0.5">
                     <li v-for="u in otherUsers" :key="u.id">
@@ -139,14 +129,16 @@ async function newRoom(): Promise<void> {
             <section v-if="departments.length > 0">
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Equipos</span>
-                    <Plus class="w-4 h-4 text-slate-300" />
                 </header>
                 <ul class="flex flex-col gap-0.5">
-                    <li v-for="dept in departments" :key="dept">
-                        <span class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-slate-700">
+                    <li v-for="[dept, count] in departments" :key="dept">
+                        <router-link :to="{ name: 'team', params: { name: dept } }"
+                            :class="['w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm',
+                                     route.name === 'team' && route.params.name === dept ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                             <Briefcase class="w-4 h-4 text-slate-500" />
                             <span class="flex-1 truncate">{{ dept }}</span>
-                        </span>
+                            <span class="text-[10px] text-slate-400 font-mono">{{ count }}</span>
+                        </router-link>
                     </li>
                 </ul>
             </section>
@@ -158,7 +150,7 @@ async function newRoom(): Promise<void> {
                 <ul class="flex flex-col gap-0.5">
                     <li>
                         <router-link :to="{ name: 'admin-license' }" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
-                            <Users class="w-4 h-4 text-slate-500" />
+                            <Shield class="w-4 h-4 text-slate-500" />
                             <span class="flex-1 text-left">Licencia</span>
                         </router-link>
                     </li>
@@ -174,8 +166,11 @@ async function newRoom(): Promise<void> {
                 {{ isProEdition(license.info) && license.info?.licensedTo ? license.info.licensedTo : 'Hasta 10 usuarios' }}
             </div>
             <router-link v-if="auth.isAdmin" :to="{ name: 'admin-license' }" class="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                Gestionar licencia →
+                {{ isProEdition(license.info) ? 'Gestionar licencia' : 'Activar Pro' }} →
             </router-link>
         </footer>
+
+        <CreateChannelModal v-if="channelModalOpen" @close="channelModalOpen = false" @created="onChannelCreated" />
+        <InviteUserModal v-if="inviteModalOpen" @close="inviteModalOpen = false" @invited="users.load()" />
     </nav>
 </template>

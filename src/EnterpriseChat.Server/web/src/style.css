@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* Tailwind v4 dropped the default `cursor: pointer` on <button>. Restore it
+   globally so every clickable element keeps the hand cursor without having
+   to remember `cursor-pointer` per component. Disabled controls override. */
+@layer base {
+    button:not(:disabled),
+    [role="button"]:not([aria-disabled="true"]),
+    summary,
+    a[href],
+    label[for],
+    input[type="checkbox"]:not(:disabled),
+    input[type="radio"]:not(:disabled),
+    input[type="submit"]:not(:disabled),
+    input[type="file"]:not(:disabled),
+    input[type="reset"]:not(:disabled) {
+        cursor: pointer;
+    }
+    button:disabled,
+    [aria-disabled="true"] {
+        cursor: not-allowed;
+    }
+}
+
 /* Component primitives reused across screens. Anything more specific lives
    alongside the component file as scoped Tailwind classes. */
 @layer components {

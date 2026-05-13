@@ -16,6 +16,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<LicenseRecord> Licenses => Set<LicenseRecord>();
     public DbSet<PinnedMessage> PinnedMessages => Set<PinnedMessage>();
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
+    public DbSet<SavedMessage> SavedMessages => Set<SavedMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -142,6 +143,20 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             b.HasOne(r => r.User)
                 .WithMany()
                 .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SavedMessage>(b =>
+        {
+            b.HasKey(s => new { s.UserId, s.MessageId });
+            b.HasIndex(s => s.UserId);
+            b.HasOne(s => s.Message)
+                .WithMany()
+                .HasForeignKey(s => s.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
