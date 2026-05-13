@@ -521,6 +521,8 @@ public sealed class ChatHub(
         return int.TryParse(raw, CultureInfo.InvariantCulture, out var id) ? id : null;
     }
 
-    internal static string RoomGroupName(int roomId)
+    /// <summary>SignalR group name for a room. Public so endpoints outside
+    /// the hub class (engagement endpoints, etc.) can broadcast to it.</summary>
+    public static string RoomGroupName(int roomId)
         => $"room:{roomId.ToString(CultureInfo.InvariantCulture)}";
 }

@@ -3,6 +3,7 @@ using EnterpriseChat.Server.Auth;
 using EnterpriseChat.Server.Bootstrap;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Admin;
+using EnterpriseChat.Server.Engagement;
 using EnterpriseChat.Server.Files;
 using EnterpriseChat.Server.Hubs;
 using EnterpriseChat.Server.Licensing;
@@ -99,6 +100,7 @@ try
     app.MapSearchEndpoints();
     app.MapFileEndpoints();
     app.MapLicenseAdminEndpoints();
+    app.MapEngagementEndpoints();
     app.MapHub<ChatHub>("/hubs/chat");
 
     // SPA fallback: anything that didn't match an API route or a real static

@@ -10,4 +10,5 @@ public sealed record UserSummary(
     string FullName,
     string? Department,
     string Role,
-    bool IsOnline);
+    bool IsOnline,
+    bool HasAvatar);

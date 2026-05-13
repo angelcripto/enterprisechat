@@ -42,8 +42,13 @@ artifacts/
 *.pidb
 *.svclog
 
-## Server runtime artefacts (never commit these)
-src/EnterpriseChat.Server/data/
+## Server runtime artefacts (never commit these).
+## Note: the literal lowercase folder name `data/` was matching the source
+## namespace folder `Data/` too because git on Windows runs with
+## core.ignorecase=true. We list the specific runtime files instead.
+src/EnterpriseChat.Server/data/chat.db*
+src/EnterpriseChat.Server/data/attachments/
+src/EnterpriseChat.Server/data/avatars/
 src/EnterpriseChat.Server/logs/
 src/EnterpriseChat.Server/certs/
 src/EnterpriseChat.Server/plugins/

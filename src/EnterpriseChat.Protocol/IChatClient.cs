@@ -35,4 +35,17 @@ public interface IChatClient
     /// to the user and stop reconnect attempts.
     /// </summary>
     Task OnLicenseDenied(string reason);
+
+    /// <summary>
+    /// Notifies room members that the pinned-message set changed. The client
+    /// re-fetches GET /rooms/{id}/pinned because the message body may be too
+    /// large to push through the hub.
+    /// </summary>
+    Task OnPinnedChanged(int roomId, long messageId, bool pinned);
+
+    /// <summary>
+    /// Notifies room members (or DM peer) about a reaction toggle. UI updates
+    /// the local count immediately and re-fetches if it drifts.
+    /// </summary>
+    Task OnReactionChanged(long messageId, int userId, string emoji, bool added);
 }

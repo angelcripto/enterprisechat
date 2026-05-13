@@ -4,6 +4,7 @@ import { setUnauthorizedHandler } from "@/api/client";
 
 const LoginView = () => import("@/views/LoginView.vue");
 const ChatView = () => import("@/views/ChatView.vue");
+const AdminLicenseView = () => import("@/views/AdminLicenseView.vue");
 
 export const router = createRouter({
     history: createWebHistory(),
@@ -12,6 +13,7 @@ export const router = createRouter({
         { path: "/", name: "home", component: ChatView },
         { path: "/channels/:roomId", name: "channel", component: ChatView, props: true },
         { path: "/dm/:peerUserId", name: "dm", component: ChatView, props: true },
+        { path: "/admin/license", name: "admin-license", component: AdminLicenseView },
         { path: "/:pathMatch(.*)*", redirect: "/" },
     ],
 });

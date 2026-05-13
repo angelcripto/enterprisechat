@@ -22,22 +22,24 @@ public sealed class LicenseActivationClient(
 {
     public const string HttpClientName = "licensing";
 
+    /// <summary>
+    /// Licenses are issued and validated by the production backend only. The
+    /// dev environment also activates here so the activation flow is tested
+    /// end-to-end with real signatures, not a local mock. Override via config
+    /// (<c>EnterpriseChat:Licensing:ActivationUrl</c>) is allowed but heavily
+    /// discouraged in production setups.
+    /// </summary>
+    public const string DefaultActivationUrl = "https://enterprisechat.es/activate";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ActivationUrl);
 
-    public string? ActivationUrl => config["EnterpriseChat:Licensing:ActivationUrl"];
+    public string ActivationUrl =>
+        config["EnterpriseChat:Licensing:ActivationUrl"] is { Length: > 0 } overriden
+            ? overriden
+            : DefaultActivationUrl;
 
     public async Task<ActivationResponse?> ActivateAsync(string serial, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(ActivationUrl))
-        {
-            log.LogWarning("Licensing backend URL no configurada (EnterpriseChat:Licensing:ActivationUrl).");
-            return new ActivationResponse(
-                Success: false,
-                Error: "Este servidor no tiene URL de activación configurada. Contacta con soporte.",
-                Jwt: null, Jti: null, LicensedTo: null, MaxUsers: 0,
-                Features: Array.Empty<string>(), HeartbeatSeconds: 0);
-        }
-
         var identity = ServerIdentity.Current;
         var payload = new
         {
