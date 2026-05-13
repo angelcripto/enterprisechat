@@ -103,7 +103,7 @@ public partial class MainWindow : FluentWindow
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "https://enterprisechat.local/pro",
+                FileName = "https://enterprisechat.es/pro",
                 UseShellExecute = true
             });
         }

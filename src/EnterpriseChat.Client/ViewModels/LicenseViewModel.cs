@@ -70,7 +70,9 @@ public sealed partial class LicenseViewModel(
         }
     }
 
-    private bool CanApply() => !IsBusy && !string.IsNullOrWhiteSpace(SerialInput) && SerialInput.Trim().Length > 20;
+    private bool CanApply() => !IsBusy
+        && !string.IsNullOrWhiteSpace(SerialInput)
+        && SerialInput.Trim().Length >= 19; // ECP-XXXX-XXXX-XXXX-XXXX = 24 con guiones, 19 sin
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
