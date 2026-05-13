@@ -40,6 +40,25 @@ try
     builder.Services.AddChatPersistence(builder.Configuration);
     builder.Services.AddChatAuth(builder.Configuration);
 
+    // CORS: only needed for `npm run dev` of the Vue SPA (different origin).
+    // Production builds copy the SPA to wwwroot and are served from the same
+    // origin, so CORS is irrelevant there.
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("WebSpaDev", policy =>
+        {
+            var origins = builder.Configuration
+                .GetSection("EnterpriseChat:Cors:DevOrigins")
+                .Get<string[]>()
+                ?? new[] { "http://localhost:5173", "http://127.0.0.1:5173" };
+            policy
+                .WithOrigins(origins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
+    });
+
     // Licensing: load Pro plugin if present, otherwise fall back to FreeLicenseValidator.
     builder.Services.AddEnterpriseChatLicensing(builder.Configuration, builder.Environment);
     builder.Services.AddSingleton<ConcurrentSessionCounter>();
@@ -56,6 +75,18 @@ try
         app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Licensing"));
 
     app.UseSerilogRequestLogging();
+
+    // Default + static files: serves the Vue SPA bundled into wwwroot/. In dev
+    // the SPA runs via `npm run dev` on its own port and hits the API via CORS;
+    // wwwroot may be empty during that flow, which is fine.
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseCors("WebSpaDev");
+    }
+
     app.UseAuthentication();
     app.UseAuthorization();
 
@@ -69,6 +100,11 @@ try
     app.MapFileEndpoints();
     app.MapLicenseAdminEndpoints();
     app.MapHub<ChatHub>("/hubs/chat");
+
+    // SPA fallback: anything that didn't match an API route or a real static
+    // file is served by index.html so the Vue Router can handle client-side
+    // paths like /channels/42, /dm/7, /login, etc.
+    app.MapFallbackToFile("index.html");
 
     var licInfo = app.Services.GetRequiredService<ILicenseValidator>().Current;
     Log.Information(

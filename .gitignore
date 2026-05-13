@@ -71,7 +71,10 @@ Desktop.ini
 installers/output/
 *.iss.bak
 
-## Web (Astro placeholder)
-web/node_modules/
-web/dist/
-web/.astro/
+## Web SPA (Vue 3 + Vite). Build output lives in wwwroot/ and is regenerated
+## by `dotnet publish` via the MSBuild target — never committed.
+src/EnterpriseChat.Server/web/node_modules/
+src/EnterpriseChat.Server/web/dist/
+src/EnterpriseChat.Server/web/.vite/
+src/EnterpriseChat.Server/wwwroot/*
+!src/EnterpriseChat.Server/wwwroot/.gitkeep

@@ -5,6 +5,12 @@
     <UserSecretsId>enterprisechat-server</UserSecretsId>
     <RootNamespace>EnterpriseChat.Server</RootNamespace>
     <AssemblyName>EnterpriseChat.Server</AssemblyName>
+
+    <!-- Build the Vue SPA into wwwroot/ as part of dotnet build / publish.
+         Override with -p:BuildSpa=false when iterating only on the C# side
+         and Node.js is not installed on the machine. -->
+    <BuildSpa Condition="'$(BuildSpa)' == ''">true</BuildSpa>
+    <SpaSourceRoot>$(MSBuildThisFileDirectory)web</SpaSourceRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,5 +34,35 @@
     <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="Spectre.Console" />
   </ItemGroup>
+
+  <!-- Vue SPA build pipeline. EnsureSpaInstalled is idempotent: it skips
+       work if node_modules already exists. BuildVueSpa calls `npx vite
+       build` directly because chaining vue-tsc && vite via `npm run build`
+       triggered an npm.cmd segfault on some Windows shells. -->
+  <Target Name="EnsureSpaInstalled"
+          Condition=" '$(BuildSpa)' == 'true' AND !Exists('$(SpaSourceRoot)\node_modules') ">
+    <Message Text="Installing Vue SPA dependencies via npm…" Importance="high" />
+    <Exec Command="npm ci" WorkingDirectory="$(SpaSourceRoot)"
+          Condition="Exists('$(SpaSourceRoot)\package-lock.json')" />
+    <Exec Command="npm install" WorkingDirectory="$(SpaSourceRoot)"
+          Condition="!Exists('$(SpaSourceRoot)\package-lock.json')" />
+  </Target>
+
+  <Target Name="BuildVueSpa"
+          BeforeTargets="BeforeBuild"
+          DependsOnTargets="EnsureSpaInstalled"
+          Condition=" '$(BuildSpa)' == 'true' ">
+    <Message Text="Building Vue SPA to wwwroot/…" Importance="high" />
+    <Exec Command="npx vite build" WorkingDirectory="$(SpaSourceRoot)" />
+  </Target>
+
+  <!-- Optional full TS type check. Off by default to keep iterative builds
+       fast; enable with `dotnet build -p:RunSpaTypeCheck=true` (or in CI). -->
+  <Target Name="TypeCheckVueSpa"
+          BeforeTargets="BeforeBuild"
+          DependsOnTargets="EnsureSpaInstalled"
+          Condition=" '$(RunSpaTypeCheck)' == 'true' ">
+    <Exec Command="npx vue-tsc -b --noEmit" WorkingDirectory="$(SpaSourceRoot)" />
+  </Target>
 
 </Project>
