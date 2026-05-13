@@ -1,0 +1,165 @@
+<ui:FluentWindow x:Class="EnterpriseChat.Client.Views.LoginWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:EnterpriseChat.Client.ViewModels"
+                 mc:Ignorable="d"
+                 Title="EnterpriseChat — Acceso"
+                 Width="420" Height="500"
+                 ResizeMode="NoResize"
+                 WindowStartupLocation="CenterScreen"
+                 WindowBackdropType="Mica"
+                 ExtendsContentIntoTitleBar="True"
+                 d:DataContext="{d:DesignInstance Type=vm:LoginViewModel}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="EnterpriseChat" />
+
+        <Grid Grid.Row="1" Margin="32,8,32,8" VerticalAlignment="Center">
+            <!-- Checking server state -->
+            <StackPanel VerticalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCheckingServer}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <ProgressBar IsIndeterminate="True" Height="2" Margin="0,0,0,12" />
+                <TextBlock Text="Verificando conexión con el servidor…" HorizontalAlignment="Center" Opacity="0.8" />
+            </StackPanel>
+
+            <!-- Server unreachable -->
+            <StackPanel VerticalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsCheckingServer}" Value="False" />
+                                    <Condition Binding="{Binding IsServerReachable}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="Servidor no disponible" FontSize="20" FontWeight="Bold"
+                           Margin="0,0,0,8" Foreground="#FF6B6B" HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding ServerStatusMessage}" TextWrapping="Wrap" Opacity="0.8"
+                           HorizontalAlignment="Center" TextAlignment="Center" Margin="0,0,0,20" />
+                <ui:Button Content="Reintentar" Command="{Binding CheckServerCommand}"
+                           Appearance="Secondary" HorizontalAlignment="Stretch" Height="34" />
+            </StackPanel>
+
+            <!-- Login form (only when reachable) -->
+            <StackPanel VerticalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsCheckingServer}" Value="False" />
+                                    <Condition Binding="{Binding IsServerReachable}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+
+                <TextBlock Text="Inicia sesión" FontSize="22" FontWeight="Bold" Margin="0,0,0,20" />
+
+                <TextBlock Text="Usuario" Margin="0,0,0,4" />
+                <ui:TextBox Text="{Binding Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            PlaceholderText="admin"
+                            Margin="0,0,0,12" />
+
+                <TextBlock Text="Contraseña" Margin="0,0,0,4" />
+                <ui:PasswordBox x:Name="PasswordField" Margin="0,0,0,16"
+                                PasswordChanged="PasswordField_OnPasswordChanged">
+                    <ui:PasswordBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding LoginCommand}" />
+                    </ui:PasswordBox.InputBindings>
+                </ui:PasswordBox>
+
+                <ui:Button Content="Entrar"
+                           Command="{Binding LoginCommand}"
+                           Appearance="Primary"
+                           HorizontalAlignment="Stretch"
+                           Height="36" />
+
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="#FF6B6B"
+                           Margin="0,12,0,0"
+                           TextWrapping="Wrap" />
+
+                <Grid Height="2" Margin="0,12,0,0">
+                    <ProgressBar IsIndeterminate="True">
+                        <ProgressBar.Style>
+                            <Style TargetType="ProgressBar">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ProgressBar.Style>
+                    </ProgressBar>
+                </Grid>
+            </StackPanel>
+        </Grid>
+
+        <!-- Connection status footer -->
+        <Border Grid.Row="2" Padding="16,10"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Ellipse Grid.Column="0" Width="10" Height="10" Margin="0,0,10,0"
+                         VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="#888" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsServerReachable}" Value="True">
+                                    <Setter Property="Fill" Value="#22C55E" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsCheckingServer}" Value="True">
+                                    <Setter Property="Fill" Value="#C08000" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <StackPanel Grid.Column="1" Orientation="Vertical">
+                    <TextBlock Text="Servidor" FontSize="10" Opacity="0.6" />
+                    <TextBlock Text="{Binding ServerUrl}" FontSize="12" FontFamily="Consolas"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <ui:Button Grid.Column="2" Content="Configurar"
+                           Appearance="Secondary"
+                           Click="ConfigureServer_OnClick"
+                           Padding="10,4" />
+            </Grid>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

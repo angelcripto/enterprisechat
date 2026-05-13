@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # WPF only builds on Windows. The server-only Linux job below covers Linux.
+        os: [windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore EnterpriseChat.sln
+
+      - name: Format check
+        run: dotnet format EnterpriseChat.sln --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build EnterpriseChat.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test EnterpriseChat.sln --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults
+
+  build-linux-server:
+    name: Build server on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore server
+        run: dotnet restore src/EnterpriseChat.Server/EnterpriseChat.Server.csproj
+
+      - name: Build server (Release)
+        run: dotnet build src/EnterpriseChat.Server/EnterpriseChat.Server.csproj --no-restore --configuration Release

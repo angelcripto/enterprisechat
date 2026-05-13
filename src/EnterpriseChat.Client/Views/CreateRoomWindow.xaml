@@ -1,0 +1,42 @@
+<ui:FluentWindow x:Class="EnterpriseChat.Client.Views.CreateRoomWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:EnterpriseChat.Client.ViewModels"
+                 mc:Ignorable="d"
+                 Title="Nueva sala"
+                 Width="380" Height="280"
+                 ResizeMode="NoResize"
+                 WindowStartupLocation="CenterOwner"
+                 WindowBackdropType="Mica"
+                 ExtendsContentIntoTitleBar="True"
+                 d:DataContext="{d:DesignInstance Type=vm:CreateRoomViewModel}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Nueva sala" />
+
+        <StackPanel Grid.Row="1" Margin="24,8,24,16" VerticalAlignment="Center">
+            <TextBlock Text="Nombre" Margin="0,0,0,4" />
+            <ui:TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="general"
+                        Margin="0,0,0,12" />
+
+            <CheckBox Content="Sala privada (solo miembros la ven)"
+                      IsChecked="{Binding IsPrivate, Mode=TwoWay}"
+                      Margin="0,0,0,18" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button Content="Cancelar" Command="{Binding CancelCommand}"
+                           Appearance="Secondary" Margin="0,0,8,0" />
+                <ui:Button Content="Crear" Command="{Binding CreateCommand}"
+                           Appearance="Primary" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

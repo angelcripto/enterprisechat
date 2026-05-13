@@ -1,0 +1,77 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+
+## Rider / ReSharper
+.idea/
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+## Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+TestResults/
+
+## .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Tooling
+.dotnet/
+.nuget/
+*.tmp_proj
+*.pidb
+*.svclog
+
+## Server runtime artefacts (never commit these)
+src/EnterpriseChat.Server/data/
+src/EnterpriseChat.Server/logs/
+src/EnterpriseChat.Server/certs/
+src/EnterpriseChat.Server/plugins/
+src/EnterpriseChat.Server/appsettings.Local.json
+*.db
+*.db-shm
+*.db-wal
+*.pem
+*.key
+*.pfx
+
+## Client runtime artefacts
+src/EnterpriseChat.Client/publish/
+
+## Local convenience shortcuts (absolute paths, per-machine)
+*.lnk
+
+## OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+## Inno Setup / installers output
+installers/output/
+*.iss.bak
+
+## Web (Astro placeholder)
+web/node_modules/
+web/dist/
+web/.astro/

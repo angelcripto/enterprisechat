@@ -1,0 +1,26 @@
+[Unit]
+Description=EnterpriseChat Server (open source corporate chat)
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/enterprisechat
+ExecStart=/opt/enterprisechat/EnterpriseChat.Server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+SyslogIdentifier=enterprisechat
+User=enterprisechat
+Group=enterprisechat
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/enterprisechat/data /opt/enterprisechat/logs /opt/enterprisechat/certs
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

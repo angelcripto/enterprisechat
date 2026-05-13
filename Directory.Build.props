@@ -1,0 +1,28 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- Target framework defaults; project files can override (e.g. Client uses net8.0-windows). -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+
+    <!-- Determinism + reproducible builds. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Versioning + metadata centralised here so every assembly stamps the same info. -->
+    <Version>0.1.0-alpha.2</Version>
+    <Authors>Angel Martinez Programacion</Authors>
+    <Company>EnterpriseChat</Company>
+    <Product>EnterpriseChat</Product>
+    <Copyright>Copyright (c) Angel Martinez Programacion 2026</Copyright>
+    <NeutralLanguage>es</NeutralLanguage>
+    <RepositoryUrl></RepositoryUrl>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+
+</Project>
