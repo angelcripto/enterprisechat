@@ -39,6 +39,7 @@ export interface UserSummary {
     role: UserRole;
     isOnline: boolean;
     hasAvatar: boolean;
+    unreadDirectMessages: number;
 }
 
 export interface RoomSummary {

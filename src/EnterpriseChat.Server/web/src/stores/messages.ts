@@ -71,6 +71,13 @@ export const useMessagesStore = defineStore("messages", () => {
     }
 
     function applyTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void {
+        // The server already routes typing events to peers/room members, but a
+        // user with two tabs (web + another web) could echo their own typing
+        // through both connections. Drop our own id defensively at store level
+        // so it never bubbles up to the visible indicator.
+        if (currentUserId.value !== null && fromUserId === currentUserId.value) {
+            return;
+        }
         const key: ThreadKey = roomId !== null
             ? { kind: "room", roomId }
             : { kind: "dm", peerUserId: fromUserId };

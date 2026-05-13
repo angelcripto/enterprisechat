@@ -61,7 +61,7 @@ watch(() => props.thread, async (t) => {
 </script>
 
 <template>
-    <aside class="h-full overflow-y-auto bg-white">
+    <aside class="h-full overflow-y-auto bg-white" data-tour="rightpanel">
         <header class="flex items-center justify-between px-4 py-3 border-b border-slate-100 sticky top-0 bg-white z-10">
             <strong class="text-slate-900">
                 {{ thread === null ? 'Información' : (thread.kind === 'room' ? 'Detalles del canal' : 'Perfil') }}

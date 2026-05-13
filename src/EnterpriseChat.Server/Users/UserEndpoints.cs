@@ -61,6 +61,18 @@ internal static class UserEndpoints
             })
             .ToListAsync(ct);
 
+        // Per-peer unread DM count for the caller. SQLite + EF can do this in
+        // one query — group all unread DMs addressed to me by their author.
+        // Rooms aren't tracked yet (would need a per-user read cursor) so
+        // their unread count is left at 0 by the caller.
+        var unreadByPeer = meId is null
+            ? new Dictionary<int, int>()
+            : await db.Messages
+                .Where(m => m.ToUserId == meId && m.ReadAt == null && m.FromUserId != meId)
+                .GroupBy(m => m.FromUserId)
+                .Select(g => new { PeerId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.PeerId, x => x.Count, ct);
+
         // Include self so the SPA can render the current user's avatar.
         var result = users
             .Select(u => new UserSummary(
@@ -70,7 +82,8 @@ internal static class UserEndpoints
                 Department: u.Department,
                 Role: u.Role,
                 IsOnline: sessions.IsOnline(u.Id) || u.Id == meId,
-                HasAvatar: u.HasAvatar))
+                HasAvatar: u.HasAvatar,
+                UnreadDirectMessages: unreadByPeer.TryGetValue(u.Id, out var cnt) ? cnt : 0))
             .ToArray();
 
         return Results.Ok(result);

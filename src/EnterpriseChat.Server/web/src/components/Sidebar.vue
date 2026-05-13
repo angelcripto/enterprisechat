@@ -48,12 +48,12 @@ function onChannelCreated(roomId: number): void {
 
 <template>
     <nav class="h-full overflow-y-auto bg-white flex flex-col">
-        <header class="px-3 pt-3 pb-2 border-b border-slate-100">
+        <header class="px-3 pt-3 pb-2 border-b border-slate-100" data-tour="workspace">
             <WorkspaceMenu @invite="inviteModalOpen = true" />
         </header>
 
         <div class="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-5">
-            <ul class="flex flex-col gap-0.5">
+            <ul class="flex flex-col gap-0.5" data-tour="sections">
                 <li>
                     <router-link :to="{ name: 'inbox' }"
                         :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
@@ -89,7 +89,7 @@ function onChannelCreated(roomId: number): void {
                 </li>
             </ul>
 
-            <section>
+            <section data-tour="channels">
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Canales</span>
                     <button type="button" class="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100" @click="channelModalOpen = true" aria-label="Nuevo canal">
@@ -109,7 +109,7 @@ function onChannelCreated(roomId: number): void {
                 </ul>
             </section>
 
-            <section>
+            <section data-tour="dms">
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Mensajes directos</span>
                 </header>
@@ -119,7 +119,11 @@ function onChannelCreated(roomId: number): void {
                             :class="['w-full text-left px-2.5 py-1.5 rounded-md text-sm flex items-center gap-2.5',
                                      isActiveDm(u.id) ? 'bg-blue-600 text-white font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                             <Avatar :user-id="u.id" :full-name="u.fullName" :has-avatar="u.hasAvatar" :size="22" :show-status="true" :online="u.isOnline" />
-                            <span class="flex-1 truncate">{{ u.fullName }}</span>
+                            <span :class="['flex-1 truncate', u.unreadDirectMessages > 0 && !isActiveDm(u.id) ? 'font-semibold text-slate-900' : '']">{{ u.fullName }}</span>
+                            <span v-if="u.unreadDirectMessages > 0 && !isActiveDm(u.id)"
+                                  class="min-w-[20px] h-[18px] px-1.5 rounded-full bg-blue-600 text-white text-[10px] font-bold inline-flex items-center justify-center">
+                                {{ u.unreadDirectMessages > 99 ? '99+' : u.unreadDirectMessages }}
+                            </span>
                         </button>
                     </li>
                     <li v-if="otherUsers.length === 0" class="text-xs text-slate-400 px-2.5 py-1">No hay otros usuarios.</li>

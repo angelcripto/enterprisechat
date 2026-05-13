@@ -40,7 +40,23 @@ const activeThread = computed<ThreadKey | null>(() => {
 
 const centrePane = computed(() => route.name);
 
-function handleMessageReceived(m: ChatMessage): void { messages.applyIncoming(m); }
+let usersRefreshTimer = 0;
+function scheduleUsersRefresh(): void {
+    // DM unread counts live on UserSummary; refresh after a tick of new messages
+    // landing so the sidebar badge updates. Coalesced: at most one refresh per
+    // 1.5 s no matter how many messages arrive.
+    if (usersRefreshTimer !== 0) return;
+    usersRefreshTimer = window.setTimeout(() => {
+        usersRefreshTimer = 0;
+        void users.load();
+    }, 1500);
+}
+function handleMessageReceived(m: ChatMessage): void {
+    messages.applyIncoming(m);
+    if (m.toUserId !== null && m.toUserId !== undefined && m.fromUserId !== auth.userId) {
+        scheduleUsersRefresh();
+    }
+}
 function handlePresence(userId: number, isOnline: boolean): void { users.applyPresence(userId, isOnline); }
 function handleMessageRead(serverId: number, byUserId: number): void { messages.applyMessageRead(serverId, byUserId); }
 function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId); }
@@ -83,6 +99,10 @@ onBeforeUnmount(async () => {
 watch(activeThread, async (key) => {
     if (key === null || connecting.value) return;
     try { await messages.loadHistory(key); } catch { /* ignore */ }
+    // After we read the history we mark its latest message as read; the
+    // sidebar's unread badge needs to follow. Schedule a refresh so the
+    // ReadAt update has time to commit before the GET /users.
+    if (key.kind === "dm") scheduleUsersRefresh();
 });
 </script>
 

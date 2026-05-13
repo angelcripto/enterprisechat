@@ -11,4 +11,5 @@ public sealed record UserSummary(
     string? Department,
     string Role,
     bool IsOnline,
-    bool HasAvatar);
+    bool HasAvatar,
+    int UnreadDirectMessages);

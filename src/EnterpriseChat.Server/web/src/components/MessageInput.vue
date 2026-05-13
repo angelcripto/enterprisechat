@@ -96,8 +96,8 @@ async function onFileSelected(ev: Event): Promise<void> {
 <template>
     <div class="border-t border-slate-200 px-4 py-3 bg-slate-50">
         <p v-if="error" class="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-1.5 mb-2">{{ error }}</p>
-        <div class="flex items-end gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 focus-within:border-blue-500 focus-within:ring-3 focus-within:ring-blue-100">
-            <button type="button" class="text-slate-500 hover:text-slate-700 p-1" @click="openFilePicker" aria-label="Adjuntar archivo">
+        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 focus-within:ring-3 focus-within:ring-blue-100">
+            <button type="button" class="text-slate-500 hover:text-slate-700 p-1 flex-shrink-0" @click="openFilePicker" aria-label="Adjuntar archivo">
                 <Paperclip class="w-4 h-4" />
             </button>
             <input ref="fileInput" type="file" class="hidden" @change="onFileSelected" />
@@ -105,13 +105,13 @@ async function onFileSelected(ev: Event): Promise<void> {
                 v-model="body"
                 rows="1"
                 placeholder="Escribe un mensaje…"
-                class="flex-1 resize-none bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none max-h-40"
+                class="flex-1 resize-none bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none max-h-40 leading-6 py-1.5"
                 @keydown="onKeyDown"
             ></textarea>
-            <button type="button" class="text-slate-400 p-1 opacity-50" aria-label="Emoji (próximamente)" disabled>
+            <button type="button" class="text-slate-400 p-1 opacity-50 flex-shrink-0" aria-label="Emoji (próximamente)" disabled>
                 <Smile class="w-4 h-4" />
             </button>
-            <button type="button" class="btn btn-primary text-sm" :disabled="sending || body.trim() === ''" @click="send">
+            <button type="button" class="btn btn-primary text-sm flex-shrink-0" :disabled="sending || body.trim() === ''" @click="send">
                 <Send class="w-4 h-4" />
                 Enviar
             </button>

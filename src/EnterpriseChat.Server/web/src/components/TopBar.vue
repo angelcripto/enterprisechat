@@ -10,6 +10,7 @@ import { chatHub } from "@/services/signalr";
 import { api } from "@/api/client";
 import { isProEdition } from "@/api/types";
 import { dialogConfirm, dialogError, dialogSuccess } from "@/dialogs";
+import { startGuidedTour } from "@/tour";
 
 const auth = useAuthStore();
 const users = useUsersStore();
@@ -76,7 +77,7 @@ async function onAvatarSelected(ev: Event): Promise<void> {
             <span v-if="isProEdition(license.info)" class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider">Pro</span>
         </div>
 
-        <div class="flex-1 max-w-xl mx-2">
+        <div class="flex-1 max-w-xl mx-2" data-tour="search">
             <div class="relative">
                 <input v-model="query" type="search" placeholder="Buscar en EnterpriseChat" class="input pl-9 pr-12" aria-label="Buscar" />
                 <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -89,11 +90,11 @@ async function onAvatarSelected(ev: Event): Promise<void> {
                 <Filter class="w-4 h-4" />
                 Filtrar
             </button>
-            <button type="button" class="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Ayuda">
+            <button type="button" class="hidden md:inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Ayuda" @click="startGuidedTour">
                 <HelpCircle class="w-5 h-5" />
             </button>
 
-            <div class="relative">
+            <div class="relative" data-tour="profile">
                 <button type="button" class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100" @click="menuOpen = !menuOpen">
                     <Avatar v-if="auth.userId !== null" :user-id="auth.userId" :full-name="auth.fullName" :has-avatar="me?.hasAvatar ?? false" :size="32" :show-status="true" :online="true" />
                     <span class="hidden md:flex flex-col leading-tight text-left">
