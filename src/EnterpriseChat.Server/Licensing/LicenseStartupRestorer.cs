@@ -21,9 +21,10 @@ internal static class LicenseStartupRestorer
         await admin.RestoreFromStorageAsync(ct);
 
         await using var db = await factory.CreateDbContextAsync(ct);
+        // SQLite cannot ORDER BY DateTimeOffset; rely on the monotonic Id instead.
         var active = await db.Licenses
             .Where(l => l.Status == LicenseRecordStatus.Active)
-            .OrderByDescending(l => l.AppliedAt)
+            .OrderByDescending(l => l.Id)
             .FirstOrDefaultAsync(ct);
 
         if (active is null)

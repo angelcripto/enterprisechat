@@ -15,7 +15,7 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
     <!-- Versioning + metadata centralised here so every assembly stamps the same info. -->
-    <Version>0.1.0-alpha.2</Version>
+    <Version>0.1.0-alpha.3</Version>
     <Authors>Angel Martinez Programacion</Authors>
     <Company>EnterpriseChat</Company>
     <Product>EnterpriseChat</Product>

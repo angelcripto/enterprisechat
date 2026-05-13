@@ -96,4 +96,31 @@ public partial class MainWindow : FluentWindow
         dialog.Owner = this;
         dialog.Show();
     }
+
+    private void BuyPro_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://enterprisechat.local/pro",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Browser launch is best-effort.
+        }
+    }
+
+    private void ActivateLicense_OnClick(object sender, RoutedEventArgs e)
+    {
+        var admin = _services.GetRequiredService<AdminWindow>();
+        admin.Owner = this;
+        admin.ShowDialog();
+        if (DataContext is MainViewModel vm)
+        {
+            _ = vm.RefreshLicenseAsync();
+        }
+    }
 }

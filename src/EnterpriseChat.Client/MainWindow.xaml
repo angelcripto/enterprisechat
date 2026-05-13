@@ -589,7 +589,7 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="3" Padding="12,4"
+        <Border Grid.Row="4" Padding="12,4"
                 Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
             <Border.Style>
                 <Style TargetType="Border">

@@ -20,6 +20,8 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    EnterpriseChat.Server.Bootstrap.InteractiveLauncher.RunIfInteractive(args, Directory.GetCurrentDirectory());
+
     Log.Information("EnterpriseChat.Server arrancando.");
 
     var builder = WebApplication.CreateBuilder(args);
@@ -74,12 +76,50 @@ try
         licInfo.Edition,
         licInfo.MaxConcurrentUsers);
 
+    // Pre-bind check so port-in-use is reported with a friendly message
+    // before Kestrel throws a noisy stack trace.
+    if (!PortAvailabilityCheck.TryEnsureAvailable(app.Configuration, out _))
+    {
+        PortAvailabilityCheck.WaitForExitKey();
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    StartupBanner.Register(app);
+
     app.Run();
 }
 catch (Exception ex) when (ex is not HostAbortedException)
 {
-    Log.Fatal(ex, "EnterpriseChat.Server ha terminado por una excepción no controlada.");
-    Environment.ExitCode = 1;
+    // Detect "address in use" anywhere in the InnerException chain — Kestrel
+    // wraps the SocketException inside IOException → AddressInUseException.
+    var addrInUse = false;
+    for (Exception? current = ex; current is not null; current = current.InnerException)
+    {
+        if (current is System.Net.Sockets.SocketException se
+            && se.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse)
+        {
+            addrInUse = true;
+            break;
+        }
+    }
+
+    if (addrInUse)
+    {
+        Log.Fatal("Kestrel no pudo enlazarse al puerto (otro proceso lo está usando).");
+        PortAvailabilityCheck.RenderPortBusyForCaught(app: null, config: null);
+        Environment.ExitCode = 2;
+    }
+    else
+    {
+        Log.Fatal(ex, "EnterpriseChat.Server ha terminado por una excepción no controlada.");
+        Environment.ExitCode = 1;
+    }
+
+    if (Environment.UserInteractive && !Console.IsOutputRedirected)
+    {
+        PortAvailabilityCheck.WaitForExitKey();
+    }
 }
 finally
 {

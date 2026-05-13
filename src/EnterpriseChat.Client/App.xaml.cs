@@ -81,6 +81,7 @@ public partial class App : Application
                 services.AddTransient<ConnectionSettingsWindow>();
                 services.AddTransient<AdminWindow>();
                 services.AddTransient<SearchWindow>();
+                services.AddTransient<WelcomeWindow>();
             })
             .UseSerilog()
             .Build();
@@ -103,9 +104,52 @@ public partial class App : Application
         mainWindow.Show();
 
         var mainVm = (MainViewModel)mainWindow.DataContext;
-        _ = mainVm.InitializeAsync();
+        _ = mainVm.InitializeAsync().ContinueWith(_ =>
+        {
+            Dispatcher.Invoke(() => MaybeShowWelcomeAsync(mainWindow, mainVm));
+        }, TaskScheduler.Default);
 
         base.OnStartup(e);
+    }
+
+    private void MaybeShowWelcomeAsync(MainWindow mainWindow, MainViewModel mainVm)
+    {
+        if (!mainVm.IsFreeEdition)
+        {
+            return;
+        }
+
+        var flagPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "EnterpriseChat",
+            "welcomed.flag");
+        if (File.Exists(flagPath))
+        {
+            return;
+        }
+
+        var welcome = Services.GetRequiredService<WelcomeWindow>();
+        welcome.Owner = mainWindow;
+        welcome.ShowDialog();
+
+        // Mark as shown regardless of action; resurfaces only if the file is deleted.
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(flagPath)!);
+            File.WriteAllText(flagPath, DateTime.UtcNow.ToString("O"));
+        }
+        catch
+        {
+            // Flag is just UX hint, not critical.
+        }
+
+        if (welcome.Result == WelcomeWindow.WelcomeAction.HaveSerial && mainVm.IsAdmin)
+        {
+            var admin = Services.GetRequiredService<AdminWindow>();
+            admin.Owner = mainWindow;
+            admin.ShowDialog();
+            _ = mainVm.RefreshLicenseAsync();
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)

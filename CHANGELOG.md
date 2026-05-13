@@ -5,6 +5,39 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Formato de serial migrado a Base32 Crockford** (alfabeto `0-9 A-Z` menos `I L O U`). El separador `-` ya no colisiona con caracteres del payload — los esquemas previos `-` y `~` quedan obsoletos. Serial nuevo: `ECP-XXXX-XXXX-...` legible y tolerante a typos (`I/L → 1`, `O → 0`, `U → V`). Implementado en `web-enterprisechat/src/Services/Base32Crockford.php` + `enterprisechat-licensing/.../Base32Crockford.cs`.
+
+### Added
+
+- **Startup banner del servidor** vía Spectre.Console: panel con borde cyan que muestra modo, edición activa (FREE/PRO con color), nombre licenciado, días hasta expiración, URL de escucha y endpoints.
+- **Detección amigable de puerto ocupado**: pre-bind con `TcpListener` en `IPAddress.Any` antes de que Kestrel arranque. Si choca renderiza panel rojo "❌ Puerto ocupado" con comandos `netstat` / `ss` para diagnosticarlo y sugerencia para cambiar `Kestrel.Endpoints.Http.Url`. Espera tecla antes de cerrar cuando es interactivo. Catch de fallback recursivo en `InnerException` chain para capturar el error si Kestrel lo lanza después del pre-check (race condition).
+
+## [0.1.0-alpha.3] — 2026-05-13
+
+### Added — Licensing (parte abierta) + UX server
+
+- **Visor de adjuntos**: chip de adjunto en burbujas tiene ahora botones **Ver** (👁) y **Guardar** (⬇). Imágenes png/jpg/jpeg/bmp/gif/webp se abren en `ImageViewerWindow` inline con zoom (rueda) + pan (arrastrar). Resto se abre con la app por defecto de Windows vía `Process.Start UseShellExecute=true` (PDF, Word, Excel, …).
+- **Tabla `Licenses`** (`AddLicenseRecords` migration) que persiste el JWT/serial activo en la BD del servidor.
+- **`ILicenseAdministrator`** en `Licensing.Abstractions` + `FreeLicenseAdministrator` stub que rechaza activaciones con mensaje "plugin Pro no instalado".
+- **Endpoints servidor**:
+  - `POST /admin/license` — aplica un serial (delegado al plugin Pro si está cargado).
+  - `DELETE /admin/license` — vuelve a Free.
+  - `GET /license` mantiene el contrato (Edition/MaxConcurrentUsers/ExpiresAt/LicensedTo).
+- **`LicenseStartupRestorer`**: al arrancar lee la fila `active` de `Licenses` y re-aplica via `ILicenseAdministrator` (idempotente, marca `superseded` si la firma ha dejado de ser válida).
+- **Cliente WPF**:
+  - Pestaña **Licencia** en `AdminWindow` con estado actual + textarea para pegar serial + botón Quitar licencia.
+  - Banner persistente Free en `MainWindow` con botones "Comprar Pro" y "Activar licencia" (este último visible solo para admin).
+  - Modal de bienvenida una sola vez (`%APPDATA%\EnterpriseChat\welcomed.flag`).
+  - `LicenseApiClient` + `LicenseViewModel`.
+
+### Added — InteractiveLauncher para el .NET server
+
+- `Bootstrap/InteractiveLauncher.cs` con **Spectre.Console**: banner Figlet + selección Test/Prod, autogenera `EnterpriseChat:Jwt:SigningKey` (48 bytes RNG → base64) y pide contraseña admin en modo Prod (oculta con `*`). Persiste en `appsettings.<env>.json`.
+- Skip automático si: `--service`, `--no-interactive`, ASPNETCORE_ENVIRONMENT ya seteado, stdin/stdout redirigidos, o no hay TTY (Windows Service / systemd).
+- `start-server.cmd` ya **no fuerza** `ASPNETCORE_ENVIRONMENT` — el launcher pregunta y crea las claves automáticamente si faltan.
+
 ## [0.1.0-alpha.2] — 2026-05-13
 
 ### Added — Fase 2 (MVP cliente WPF)

@@ -28,6 +28,7 @@
     <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageVersion Include="Spectre.Console" Version="0.49.1" />
 
     <!-- WPF stack (Client only). -->
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.3.2" />
