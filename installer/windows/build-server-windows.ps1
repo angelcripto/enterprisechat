@@ -19,7 +19,11 @@
 [CmdletBinding()]
 param(
     [string]$Version = '0.1.0',
-    [switch]$Sign
+    [switch]$Sign,
+    # Salta dotnet publish y reutiliza el output anterior en
+    # src\EnterpriseChat.Server\bin\publish\win-x64. Util para iterar solo
+    # sobre el .iss sin re-compilar el server cada vez.
+    [switch]$SkipPublish
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,25 +48,32 @@ function Find-IsccExe {
     throw 'No se encuentra Inno Setup (ISCC.exe). Instala desde https://jrsoftware.org/isdl.php'
 }
 
-Write-Host "==> dotnet publish (win-x64, self-contained, single-file)" -ForegroundColor Cyan
-if (Test-Path $Pub) { Remove-Item -Recurse -Force $Pub }
+if ($SkipPublish) {
+    if (-not (Test-Path (Join-Path $Pub 'EnterpriseChat.Server.exe'))) {
+        throw "SkipPublish: no se encontro un publish previo en $Pub. Ejecuta el script una vez sin -SkipPublish."
+    }
+    Write-Host "==> Saltando dotnet publish (-SkipPublish, reutilizando $Pub)" -ForegroundColor DarkYellow
+} else {
+    Write-Host "==> dotnet publish (win-x64, self-contained, single-file)" -ForegroundColor Cyan
+    if (Test-Path $Pub) { Remove-Item -Recurse -Force $Pub }
 
-dotnet publish $Server `
-    -c Release `
-    -r win-x64 `
-    --self-contained true `
-    -p:PublishSingleFile=true `
-    -p:DebugType=embedded `
-    -p:DebugSymbols=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:Version=$Version `
-    -o $Pub
+    dotnet publish $Server `
+        -c Release `
+        -r win-x64 `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:DebugType=embedded `
+        -p:DebugSymbols=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:Version=$Version `
+        -o $Pub
 
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish fallo' }
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish fallo' }
 
-# Eliminar appsettings.Development.json del paquete (no debe viajar a prod).
-$devSettings = Join-Path $Pub 'appsettings.Development.json'
-if (Test-Path $devSettings) { Remove-Item $devSettings }
+    # Eliminar appsettings.Development.json del paquete (no debe viajar a prod).
+    $devSettings = Join-Path $Pub 'appsettings.Development.json'
+    if (Test-Path $devSettings) { Remove-Item $devSettings }
+}
 
 Write-Host '==> Compilando installer Inno Setup' -ForegroundColor Cyan
 $Iscc = Find-IsccExe

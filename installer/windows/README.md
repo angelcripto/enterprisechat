@@ -21,7 +21,13 @@ cd installer\windows
 ./build-server-windows.ps1                  # build 0.1.0 sin firma
 ./build-server-windows.ps1 -Version 1.0.0   # cambiar versión
 ./build-server-windows.ps1 -Sign            # firmar con signtool/EV cert
+./build-server-windows.ps1 -SkipPublish     # solo recompilar el .iss
 ```
+
+`-SkipPublish` reutiliza el output anterior de
+`src\EnterpriseChat.Server\bin\publish\win-x64`. Útil para iterar sobre
+el script Inno Setup sin esperar a `dotnet publish` cada vez (corta el
+ciclo de ~30s a ~3s).
 
 Salida:
 
