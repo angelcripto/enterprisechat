@@ -53,6 +53,8 @@
                     <Separator />
                     <MenuItem Header="Abrir panel admin"
                               Command="{Binding OpenAdminCommand}" />
+                    <MenuItem Header="Cambiar contraseña admin"
+                              Command="{Binding ChangeAdminPasswordCommand}" />
                     <Separator />
                     <MenuItem Header="Salir" Click="TrayExit_OnClick" />
                 </ContextMenu>
@@ -109,6 +111,9 @@
                     <ui:Button Margin="0,0,8,0"
                                Content="Abrir panel admin"
                                Command="{Binding OpenAdminCommand}" />
+                    <ui:Button Margin="0,0,8,0"
+                               Content="Cambiar contraseña admin"
+                               Command="{Binding ChangeAdminPasswordCommand}" />
                     <ui:Button Margin="0,0,8,0"
                                Content="Refrescar"
                                Command="{Binding RefreshNowCommand}" />

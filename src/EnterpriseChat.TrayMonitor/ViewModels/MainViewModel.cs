@@ -22,6 +22,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly WindowsServiceClient _service = new();
     private readonly HealthClient _health = new();
     private readonly LogTail _logTail;
+    private readonly AdminPasswordResetClient _passwordReset;
     private readonly DispatcherTimer _poll;
 
     [ObservableProperty]
@@ -32,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StartServiceCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopServiceCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestartServiceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ChangeAdminPasswordCommand))]
     private ServiceStatus _status = ServiceStatus.Unknown;
 
     [ObservableProperty]
@@ -60,6 +62,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StopServiceCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestartServiceCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshNowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ChangeAdminPasswordCommand))]
     private bool _isBusy;
 
     public string TrayTooltip => $"EnterpriseChat — {StatusLabel}";
@@ -98,6 +101,7 @@ public sealed partial class MainViewModel : ObservableObject
         var trayDir = AppContext.BaseDirectory;
         var serverDir = Path.GetFullPath(Path.Combine(trayDir, ".."));
         _logTail = new LogTail(serverDir);
+        _passwordReset = new AdminPasswordResetClient(serverDir);
 
         _poll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _poll.Tick += async (_, _) => await RefreshAsync().ConfigureAwait(true);
@@ -155,6 +159,55 @@ public sealed partial class MainViewModel : ObservableObject
     {
         await RefreshAsync().ConfigureAwait(true);
     }
+
+    [RelayCommand(CanExecute = nameof(CanChangePassword))]
+    private async Task ChangeAdminPasswordAsync()
+    {
+        var dialog = new ChangePasswordDialog { Owner = Application.Current.MainWindow };
+        var ok = dialog.ShowDialog();
+        if (ok != true)
+        {
+            return;
+        }
+        var newPwd = dialog.AcceptedPassword;
+        if (string.IsNullOrEmpty(newPwd))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        BusyMessage = "Cambiando contraseña del administrador…";
+        try
+        {
+            var r = await _passwordReset.RunAsync(newPwd).ConfigureAwait(true);
+            if (r.Ok)
+            {
+                MessageBox.Show(
+                    "Contraseña del administrador cambiada correctamente.",
+                    "EnterpriseChat",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    "No se pudo cambiar la contraseña:\n\n" + r.Message,
+                    "EnterpriseChat",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+        finally
+        {
+            BusyMessage = string.Empty;
+            IsBusy = false;
+            // Sobrescribir la referencia local; no podemos forzar que el
+            // string-interner lo libere pero al menos no lo guardamos.
+            newPwd = string.Empty;
+        }
+    }
+
+    private bool CanChangePassword() => !IsBusy && ServiceInstalled && _passwordReset.ServerBinaryExists();
 
     [RelayCommand]
     private void OpenAdmin()
