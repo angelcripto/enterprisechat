@@ -143,46 +143,64 @@ var
 
 // ----- Helpers ------------------------------------------------------------
 
-function RandomBase64(NumBytes: Integer): string;
-var
-  Bytes: array of Byte;
-  i: Integer;
-  Hex, Token, Alphabet: string;
-begin
-  // Inno Setup no expone CryptGenRandom limpiamente, pero Random() sembrada
-  // a tiempo + microsegundos da entropía suficiente para una instalación
-  // inicial. El admin puede regenerar después desde el panel.
-  Randomize;
-  SetArrayLength(Bytes, NumBytes);
-  for i := 0 to NumBytes - 1 do
-    Bytes[i] := Random(256);
+// Inno PascalScript no incluye Randomize/Random ni acceso a
+// RandomNumberGenerator del CLR. Delegamos en powershell.exe (presente en
+// cualquier Windows Server 2008+) que sí tiene
+// System.Security.Cryptography.RandomNumberGenerator. Escribimos un .ps1
+// temporal, lo ejecutamos, leemos stdout y lo borramos.
 
-  // Conversión binaria -> base64 manual (Inno no trae helper directo).
-  // Usamos charset URL-safe sin padding para que quepa en JSON sin escapes.
-  Alphabet := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  Token := '';
-  i := 0;
-  while i + 2 < NumBytes do begin
-    Token := Token + Alphabet[(Bytes[i] shr 2) + 1];
-    Token := Token + Alphabet[(((Bytes[i] and $03) shl 4) or (Bytes[i+1] shr 4)) + 1];
-    Token := Token + Alphabet[(((Bytes[i+1] and $0F) shl 2) or (Bytes[i+2] shr 6)) + 1];
-    Token := Token + Alphabet[(Bytes[i+2] and $3F) + 1];
-    i := i + 3;
+function ExecPowerShellCaptureOutput(ScriptBody: string): string;
+var
+  ScriptFile, OutFile: string;
+  FullScript: string;
+  Buf: AnsiString;
+  Code: Integer;
+begin
+  ScriptFile := ExpandConstant('{tmp}\ec-rand-{random}.ps1');
+  OutFile    := ExpandConstant('{tmp}\ec-rand-{random}.out');
+
+  // El propio script PowerShell escribe a $OutFile para evitar el quoting
+  // hell de redirigir stdout via cmd.
+  FullScript :=
+    '$ErrorActionPreference = ''Stop''' + #13#10 +
+    '$value = & {' + #13#10 + ScriptBody + #13#10 + '}' + #13#10 +
+    'Set-Content -Path ''' + OutFile + ''' -Value $value -NoNewline -Encoding ASCII' + #13#10;
+
+  SaveStringToFile(ScriptFile, FullScript, False);
+
+  Exec('powershell.exe',
+       '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptFile + '"',
+       '', SW_HIDE, ewWaitUntilTerminated, Code);
+
+  Result := '';
+  if FileExists(OutFile) then begin
+    if LoadStringFromFile(OutFile, Buf) then
+      Result := Trim(string(Buf));
+    DeleteFile(OutFile);
   end;
-  Result := Token;
+  DeleteFile(ScriptFile);
 end;
 
-function RandomAdminPassword(Length: Integer): string;
-var
-  Alphabet, Token: string;
-  i: Integer;
+function RandomBase64(NumBytes: Integer): string;
 begin
-  Randomize;
-  Alphabet := 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  Token := '';
-  for i := 1 to Length do
-    Token := Token + Alphabet[Random(Length(Alphabet)) + 1];
-  Result := Token;
+  // RandomNumberGenerator.GetBytes() es cripto-seguro en .NET Framework
+  // (disponible en cualquier Windows soportado).
+  Result := ExecPowerShellCaptureOutput(
+    '$bytes = New-Object byte[] ' + IntToStr(NumBytes) + ';' + #13#10 +
+    '[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes);' + #13#10 +
+    '[Convert]::ToBase64String($bytes)'
+  );
+end;
+
+function RandomAdminPassword(Len: Integer): string;
+begin
+  // Charset sin caracteres ambiguos (0/O, 1/l/I).
+  Result := ExecPowerShellCaptureOutput(
+    '$alphabet = [char[]]''ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'';' + #13#10 +
+    '$bytes = New-Object byte[] ' + IntToStr(Len) + ';' + #13#10 +
+    '[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes);' + #13#10 +
+    '-join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })'
+  );
 end;
 
 function WriteAppSettings(AppDir, JwtKey, Pwd: string): Boolean;
