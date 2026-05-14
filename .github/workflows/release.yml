@@ -216,13 +216,83 @@ jobs:
       - name: Listar artefactos
         run: ls -la artifacts/
 
+      - name: Generar body de la release (user-friendly)
+        id: body
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          DEB_SHA="$(awk '{print $1}' artifacts/enterprisechat_amd64.deb.sha256 2>/dev/null || echo 'pendiente')"
+          EXE_SHA="$(awk '{print $1}' artifacts/enterprisechat-server-win-x64.exe.sha256 2>/dev/null || echo 'pendiente')"
+
+          cat > release-body.md <<EOF
+          # EnterpriseChat $VER
+
+          Chat empresarial autoalojado. Servidor .NET 8 + SignalR + SQLite.
+          Sin Docker, sin nube, sin cuenta. Una línea y tienes el servicio
+          corriendo en :5080.
+
+          ---
+
+          ## 🐧 Linux (Debian, Ubuntu, AlmaLinux, RockyLinux)
+
+          \`\`\`bash
+          curl -fsSL https://enterprisechat.es/install.sh | sudo bash
+          \`\`\`
+
+          El instalador detecta tu distro, descarga el paquete correcto,
+          verifica el SHA-256, lo instala y arranca el servicio. Al
+          terminar imprime la URL admin y la contraseña inicial.
+
+          ## 🪟 Windows Server (2019 / 2022)
+
+          PowerShell **como administrador**:
+
+          \`\`\`powershell
+          irm https://enterprisechat.es/install.ps1 | iex
+          \`\`\`
+
+          Descarga el instalador firmado, verifica el SHA-256, lo ejecuta
+          en modo silencioso y registra el servicio Windows
+          \`EnterpriseChat\`. Pantalla final con URL admin + contraseña.
+
+          ---
+
+          ## Tras instalar
+
+          1. Abre \`http://<ip-del-servidor>:5080/\`.
+          2. Usuario \`admin\` + contraseña que te imprimió el instalador.
+          3. Cámbiala en el primer login.
+
+          Para conectar empleados, reparte el cliente Windows desde la
+          web (próximamente) o accede al panel web del propio servidor.
+
+          ---
+
+          ## Verificación de integridad
+
+          | Archivo | SHA-256 |
+          |---|---|
+          | \`enterprisechat_amd64.deb\` | \`$DEB_SHA\` |
+          | \`enterprisechat-server-win-x64.exe\` | \`$EXE_SHA\` |
+
+          Cada artefacto trae su \`.sha256\` adjunto. Los scripts oficiales
+          de instalación validan ese hash automáticamente.
+
+          ---
+
+          📖 [Documentación](https://enterprisechat.es)  ·
+          ❓ [Soporte](https://enterprisechat.es/contacto)  ·
+          🐛 [Issues](https://github.com/${{ github.repository }}/issues)
+          EOF
+
       - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
           name: EnterpriseChat ${{ github.ref_name }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          generate_release_notes: true
+          body_path: release-body.md
+          fail_on_unmatched_files: false
           files: |
             artifacts/enterprisechat_amd64.deb
             artifacts/enterprisechat_amd64.deb.sha256
