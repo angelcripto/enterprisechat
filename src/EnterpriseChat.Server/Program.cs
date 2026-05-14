@@ -33,7 +33,19 @@ try
 
     Log.Information("EnterpriseChat.Server arrancando.");
 
-    var builder = WebApplication.CreateBuilder(args);
+    // Cuando el server corre como Windows Service, sc.exe no fija el
+    // WorkingDirectory: el SCM arranca el proceso con CurrentDirectory =
+    // C:\Windows\System32. Eso rompe la resolución relativa de wwwroot/,
+    // data/chat.db y los logs configurados con paths relativos. Forzamos
+    // ContentRootPath = AppContext.BaseDirectory (la carpeta donde está
+    // el .exe / .dll del server) para que las paths relativas funcionen
+    // igual que en Linux (systemd ya pone WorkingDirectory=/opt/enterprisechat).
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        Args = args,
+        ContentRootPath = AppContext.BaseDirectory,
+    });
+    Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
     // Same binary runs as console (dev), Windows Service or systemd unit.
     builder.Host.UseWindowsService(o => o.ServiceName = "EnterpriseChat");

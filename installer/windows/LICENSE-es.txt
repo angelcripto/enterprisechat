@@ -1,0 +1,75 @@
+                    LICENCIA PUBLICA GENERAL AFFERO DE GNU
+                          Version 3, 19 de noviembre de 2007
+
+EnterpriseChat se distribuye bajo la GNU Affero General Public License v3
+(AGPL-3.0). Lo que sigue es un resumen no vinculante en castellano para
+ayudarte a entender la licencia. El texto vinculante, oficial y unico
+valido a efectos legales es el texto en ingles de la Free Software
+Foundation (FSF), incluido tras este resumen y disponible en:
+
+  https://www.gnu.org/licenses/agpl-3.0.txt
+
+----------------------------------------------------------------------
+QUE PUEDES HACER
+----------------------------------------------------------------------
+
+ * Usar EnterpriseChat para cualquier proposito, incluido el comercial.
+ * Estudiar el codigo fuente y modificarlo libremente.
+ * Distribuir copias del programa, modificadas o no.
+ * Ejecutarlo en tu propio servidor para dar servicio a tu empresa.
+
+----------------------------------------------------------------------
+QUE OBLIGACIONES TIENES
+----------------------------------------------------------------------
+
+ 1. Conservar el aviso de copyright y los avisos de licencia en el
+    codigo y en cualquier copia que distribuyas.
+
+ 2. Si distribuyes el programa, modificado o no, tienes que ofrecer el
+    codigo fuente completo correspondiente a quien reciba esa copia.
+
+ 3. AGPL incluye una clausula especifica para software accesible a
+    traves de la red: si modificas EnterpriseChat y lo haces disponible
+    a usuarios a traves de una red (por ejemplo, lo despliegas en un
+    servidor que otras personas pueden usar), tienes que ofrecerles el
+    codigo fuente modificado correspondiente bajo esta misma licencia.
+
+ 4. Todo el codigo derivado tiene que distribuirse tambien bajo AGPL-3.0.
+
+----------------------------------------------------------------------
+GARANTIAS
+----------------------------------------------------------------------
+
+EnterpriseChat se distribuye SIN NINGUNA GARANTIA, ni siquiera la
+garantia implicita de COMERCIALIZACION o IDONEIDAD PARA UN PROPOSITO
+PARTICULAR. Vease el texto en ingles para los detalles.
+
+----------------------------------------------------------------------
+LICENCIAS ALTERNATIVAS
+----------------------------------------------------------------------
+
+Si necesitas una licencia que no sea AGPL (por ejemplo, para integrar
+EnterpriseChat en un producto comercial sin abrir el codigo derivado),
+ponte en contacto en https://enterprisechat.es/contacto para tramitar
+una licencia comercial.
+
+----------------------------------------------------------------------
+TEXTO VINCULANTE (en ingles - unico texto valido legalmente)
+----------------------------------------------------------------------
+
+                    GNU AFFERO GENERAL PUBLIC LICENSE
+                       Version 3, 19 November 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+The full text of the GNU Affero General Public License version 3 is
+distributed alongside this installer in the file LICENSE in the
+program installation directory and is available online at:
+
+  https://www.gnu.org/licenses/agpl-3.0.txt
+
+By clicking "I accept the agreement" you agree to be bound by the
+terms of the GNU Affero General Public License version 3 as published
+by the Free Software Foundation.

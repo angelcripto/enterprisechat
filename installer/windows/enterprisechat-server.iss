@@ -44,8 +44,10 @@
 #define MyServiceDescription "Servidor de chat empresarial EnterpriseChat (.NET 8 + SignalR + SQLite). Escucha en el puerto 5080."
 #define MyPublishDir  "..\..\src\EnterpriseChat.Server\bin\publish\win-x64"
 #define MyOutputDir   "build"
-#define MyLicenseFile "..\..\LICENSE"
-#define MyReadmeFile  "..\..\README.md"
+#define MyLicenseFile "LICENSE-es.txt"
+#define MyLicenseFileOfficial "..\..\LICENSE"
+#define MyReadmeFile  "README-INSTALL-es.txt"
+#define MyIconFile    "assets\enterprisechat.ico"
 
 [Setup]
 AppId={{#MyAppId}}
@@ -62,7 +64,7 @@ VersionInfoDescription={#MyAppName} {#MyAppVersion}
 DefaultDirName={autopf}\EnterpriseChat
 DefaultGroupName=EnterpriseChat
 DisableProgramGroupPage=yes
-AllowNoIcons=yes
+AllowNoIcons=no
 
 LicenseFile={#MyLicenseFile}
 InfoBeforeFile={#MyReadmeFile}
@@ -76,7 +78,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
-UninstallDisplayIcon={app}\EnterpriseChat.Server.exe
+UninstallDisplayIcon={app}\enterprisechat.ico
+SetupIconFile={#MyIconFile}
 
 WizardStyle=modern
 ShowLanguageDialog=auto
@@ -87,11 +90,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "startservice"; Description: "Arrancar el servicio EnterpriseChat al finalizar la instalación"; GroupDescription: "Acciones tras instalar:"; Flags: checkedonce
+Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; GroupDescription: "Iconos adicionales:"; Flags: checkedonce
 
 [Files]
 ; Publish output completo (binario self-contained + wwwroot + appsettings.json default).
 Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#MyLicenseFile}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "{#MyLicenseFileOfficial}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "{#MyIconFile}"; DestDir: "{app}"; DestName: "enterprisechat.ico"; Flags: ignoreversion
 
 [Dirs]
 Name: "{app}\data";    Permissions: users-modify
@@ -99,11 +104,17 @@ Name: "{app}\logs";    Permissions: users-modify
 Name: "{app}\certs";   Permissions: users-modify
 
 [Icons]
-Name: "{group}\Abrir panel admin"; Filename: "http://localhost:5080/"
-Name: "{group}\Documentación"; Filename: "{#MyAppURL}"
-Name: "{group}\Detener servicio"; Filename: "sc.exe"; Parameters: "stop {#MyServiceName}"; WorkingDir: "{app}"
-Name: "{group}\Arrancar servicio"; Filename: "sc.exe"; Parameters: "start {#MyServiceName}"; WorkingDir: "{app}"
-Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"
+; Carpeta del Menú Inicio. Iconos con el .ico empaquetado para que tengan
+; identidad visual en lugar del icono genérico de Windows.
+Name: "{group}\Abrir panel admin EnterpriseChat"; Filename: "http://localhost:5080/"; IconFilename: "{app}\enterprisechat.ico"
+Name: "{group}\Arrancar servicio"; Filename: "{sys}\sc.exe"; Parameters: "start {#MyServiceName}"; IconFilename: "{app}\enterprisechat.ico"; Comment: "Inicia el servicio Windows EnterpriseChat (requiere admin)"
+Name: "{group}\Detener servicio"; Filename: "{sys}\sc.exe"; Parameters: "stop {#MyServiceName}"; IconFilename: "{app}\enterprisechat.ico"; Comment: "Detiene el servicio Windows EnterpriseChat (requiere admin)"
+Name: "{group}\Reiniciar servicio"; Filename: "{cmd}"; Parameters: "/C ""sc stop {#MyServiceName} & timeout /t 3 /nobreak >NUL & sc start {#MyServiceName}"""; IconFilename: "{app}\enterprisechat.ico"; Comment: "Detiene y arranca el servicio (requiere admin)"
+Name: "{group}\Documentación"; Filename: "{#MyAppURL}"; IconFilename: "{app}\enterprisechat.ico"
+Name: "{group}\Desinstalar EnterpriseChat Server"; Filename: "{uninstallexe}"; IconFilename: "{app}\enterprisechat.ico"
+
+; Acceso directo en el escritorio (opcional, controlado por task).
+Name: "{autodesktop}\EnterpriseChat (panel admin)"; Filename: "http://localhost:5080/"; IconFilename: "{app}\enterprisechat.ico"; Tasks: desktopicon
 
 [Run]
 ; Detener cualquier instancia previa (idempotente) antes de tocar archivos —
@@ -245,7 +256,53 @@ begin
                  SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
+function PortInUseByForeignProcess(Port: Integer): Boolean;
+var
+  OutFile: string;
+  Buf: AnsiString;
+  Cmd: string;
+  Code: Integer;
+begin
+  // PowerShell devuelve "1" si el puerto esta ocupado por un proceso CUYA
+  // ruta NO contiene EnterpriseChat (ergo, no es nuestro propio servicio
+  // re-iniciandose ni nuestro publish dir). En caso de error o ausencia
+  // de PowerShell devolvemos False (no bloqueamos la instalacion por
+  // falta de diagnostico).
+  OutFile := ExpandConstant('{tmp}\ec-portcheck.txt');
+  Cmd := '-NoProfile -ExecutionPolicy Bypass -Command "' +
+    '$c = Get-NetTCPConnection -LocalPort ' + IntToStr(Port) +
+    ' -State Listen -ErrorAction SilentlyContinue;' +
+    'if (-not $c) { ''0'' | Set-Content -NoNewline ''' + OutFile + '''; exit }; ' +
+    '$p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue;' +
+    'if ($p -and $p.Path -and ($p.Path -like ''*EnterpriseChat*'')) { ''0'' } else { ''1'' } | ' +
+    'Set-Content -NoNewline ''' + OutFile + '''"';
+  Exec('powershell.exe', Cmd, '', SW_HIDE, ewWaitUntilTerminated, Code);
+
+  Result := False;
+  if FileExists(OutFile) then begin
+    if LoadStringFromFile(OutFile, Buf) then
+      Result := Trim(string(Buf)) = '1';
+    DeleteFile(OutFile);
+  end;
+end;
+
 // ----- Hooks Inno Setup ---------------------------------------------------
+
+function InitializeSetup(): Boolean;
+var
+  Response: Integer;
+begin
+  Result := True;
+  if PortInUseByForeignProcess(5080) then begin
+    Response := MsgBox(
+      'El puerto 5080 ya esta ocupado por otro proceso en este equipo.' + #13#10 + #13#10 +
+      'El servicio EnterpriseChat no podra arrancar mientras ese otro proceso siga vivo (Windows Service Control Manager fallara con "Address already in use" y dejara el servicio en estado "Stopped").' + #13#10 + #13#10 +
+      'Sugerencia: cierra el proceso que esta usando el puerto 5080 antes de continuar (por ejemplo un servidor de desarrollo abierto con dotnet run).' + #13#10 + #13#10 +
+      '¿Quieres continuar de todas formas? (Podras arrancar el servicio mas tarde, cuando liberes el puerto, desde el Menu Inicio > EnterpriseChat > Arrancar servicio.)',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
+    if Response = IDNO then Result := False;
+  end;
+end;
 
 procedure InitializeWizard;
 begin
