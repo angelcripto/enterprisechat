@@ -21,6 +21,14 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    var resetRequested = EnterpriseChat.Server.Bootstrap.AdminPasswordResetCli.TryExtractPassword(args, out var newAdminPwd, out var remainingArgs);
+    args = remainingArgs;
+    if (resetRequested)
+    {
+        Environment.ExitCode = await EnterpriseChat.Server.Bootstrap.AdminPasswordResetCli.RunAsync(newAdminPwd);
+        return;
+    }
+
     EnterpriseChat.Server.Bootstrap.InteractiveLauncher.RunIfInteractive(args, Directory.GetCurrentDirectory());
 
     Log.Information("EnterpriseChat.Server arrancando.");
