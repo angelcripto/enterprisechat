@@ -1,0 +1,224 @@
+name: release
+
+# Disparo: push de un tag con prefijo "v" (v0.1.0, v1.0.0, v0.2.0-beta.3).
+# Genera assets en GitHub Releases automáticamente: paquete .deb Linux,
+# instalador .exe Windows (Inno Setup), y sus correspondientes ficheros
+# .sha256. Permisos requeridos: contents: write para publicar la release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # =======================================================================
+  # Linux .deb
+  # =======================================================================
+  build-linux:
+    name: build-linux-deb
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Derivar version del tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+
+      - name: dotnet publish (linux-x64, self-contained)
+        run: |
+          dotnet publish src/EnterpriseChat.Server/EnterpriseChat.Server.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:Version=${{ steps.ver.outputs.version }} \
+            -o publish/linux-x64
+
+      - name: Construir .deb
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          PKG=pkg-deb
+
+          mkdir -p "$PKG/DEBIAN" "$PKG/opt/enterprisechat" "$PKG/etc/systemd/system"
+          cp -r publish/linux-x64/. "$PKG/opt/enterprisechat/"
+          cp src/EnterpriseChat.Server/scripts/enterprisechat.service \
+             "$PKG/etc/systemd/system/enterprisechat.service"
+
+          cat > "$PKG/DEBIAN/control" <<EOF
+          Package: enterprisechat
+          Version: $VER
+          Section: net
+          Priority: optional
+          Architecture: amd64
+          Maintainer: EnterpriseChat <soporte@enterprisechat.es>
+          Depends: libicu70 | libicu72 | libicu74, libssl3 | libssl1.1
+          Description: EnterpriseChat self-hosted corporate chat server
+           ASP.NET Core + SignalR + SQLite. Runs as systemd unit on port 5080.
+          EOF
+
+          cat > "$PKG/DEBIAN/postinst" <<'EOF'
+          #!/bin/bash
+          set -e
+          INSTALL_DIR=/opt/enterprisechat
+          SERVICE_USER=enterprisechat
+          if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+              useradd --system --create-home --home-dir "$INSTALL_DIR" \
+                      --shell /usr/sbin/nologin "$SERVICE_USER"
+          fi
+          mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/logs" "$INSTALL_DIR/certs"
+          chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+          chmod 0750 "$INSTALL_DIR/certs"
+          chmod 0755 "$INSTALL_DIR/EnterpriseChat.Server" || true
+          systemctl daemon-reload || true
+          EOF
+
+          cat > "$PKG/DEBIAN/prerm" <<'EOF'
+          #!/bin/bash
+          set -e
+          if systemctl is-active --quiet enterprisechat.service 2>/dev/null; then
+              systemctl stop enterprisechat.service || true
+          fi
+          if systemctl is-enabled --quiet enterprisechat.service 2>/dev/null; then
+              systemctl disable enterprisechat.service || true
+          fi
+          EOF
+
+          chmod 0755 "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/prerm"
+          chmod 0644 "$PKG/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "$PKG" "enterprisechat_amd64.deb"
+          sha256sum enterprisechat_amd64.deb > enterprisechat_amd64.deb.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: |
+            enterprisechat_amd64.deb
+            enterprisechat_amd64.deb.sha256
+
+  # =======================================================================
+  # Windows .exe (Inno Setup)
+  # =======================================================================
+  build-windows:
+    name: build-windows-installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Derivar version del tag
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $ver = $tag.TrimStart('v')
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=$tag"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Construir installer
+        shell: pwsh
+        working-directory: installer/windows
+        run: ./build-server-windows.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      # Firma Authenticode opcional. Solo se activa si el secret
+      # WINDOWS_SIGNING_CERT_PFX_BASE64 está configurado en el repo.
+      - name: Firmar exe (si hay cert)
+        if: env.HAS_CERT == '1'
+        shell: pwsh
+        env:
+          HAS_CERT: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_BASE64 != '' && '1' || '0' }}
+          CERT_B64:  ${{ secrets.WINDOWS_SIGNING_CERT_PFX_BASE64 }}
+          CERT_PASS: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:CERT_B64)
+          $pfx   = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, $bytes)
+          $exe = (Get-ChildItem installer/windows/build/*.exe | Select-Object -First 1).FullName
+          & signtool.exe sign /f $pfx /p $env:CERT_PASS /fd SHA256 `
+            /tr http://timestamp.digicert.com /td SHA256 $exe
+          $sha = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+          Set-Content -Path "$exe.sha256" -Value "$sha  $(Split-Path -Leaf $exe)" -Encoding ASCII
+
+      - name: Renombrar asset a nombre canónico
+        shell: pwsh
+        working-directory: installer/windows/build
+        run: |
+          $src = Get-ChildItem . -Filter "enterprisechat-server-win-x64-${{ steps.ver.outputs.version }}.exe" | Select-Object -First 1
+          if (-not $src) { throw 'installer .exe not found' }
+          Copy-Item $src.FullName "enterprisechat-server-win-x64.exe"
+          # Re-hash con el nombre canónico para que install.ps1 lo encuentre.
+          $sha = (Get-FileHash -Algorithm SHA256 "enterprisechat-server-win-x64.exe").Hash.ToLower()
+          Set-Content -Path "enterprisechat-server-win-x64.exe.sha256" `
+                      -Value "$sha  enterprisechat-server-win-x64.exe" `
+                      -Encoding ASCII
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            installer/windows/build/enterprisechat-server-win-x64.exe
+            installer/windows/build/enterprisechat-server-win-x64.exe.sha256
+
+  # =======================================================================
+  # Publicar GitHub Release con todos los assets
+  # =======================================================================
+  release:
+    name: github-release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-amd64
+          path: artifacts/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: artifacts/
+
+      - name: Listar artefactos
+        run: ls -la artifacts/
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EnterpriseChat ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            artifacts/enterprisechat_amd64.deb
+            artifacts/enterprisechat_amd64.deb.sha256
+            artifacts/enterprisechat-server-win-x64.exe
+            artifacts/enterprisechat-server-win-x64.exe.sha256
