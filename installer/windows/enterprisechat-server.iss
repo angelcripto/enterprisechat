@@ -156,8 +156,11 @@ var
   Buf: AnsiString;
   Code: Integer;
 begin
-  ScriptFile := ExpandConstant('{tmp}\ec-rand-{random}.ps1');
-  OutFile    := ExpandConstant('{tmp}\ec-rand-{random}.out');
+  // Nombres fijos en {tmp}. Las llamadas son secuenciales (RandomBase64 +
+  // RandomAdminPassword) y limpiamos los archivos al final de cada
+  // invocación, así que no hay colisión.
+  ScriptFile := ExpandConstant('{tmp}\ec-randgen.ps1');
+  OutFile    := ExpandConstant('{tmp}\ec-randgen.out');
 
   // El propio script PowerShell escribe a $OutFile para evitar el quoting
   // hell de redirigir stdout via cmd.
