@@ -1,14 +1,32 @@
 name: release
 
-# Disparo: push de un tag con prefijo "v" (v0.1.0, v1.0.0, v0.2.0-beta.3).
-# Genera assets en GitHub Releases automáticamente: paquete .deb Linux,
-# instalador .exe Windows (Inno Setup), y sus correspondientes ficheros
-# .sha256. Permisos requeridos: contents: write para publicar la release.
+# Disparos:
+#   - push de un tag con prefijo "v" (v0.1.0, v1.0.0, v0.2.0-beta.3):
+#     compila + publica la release oficial en GitHub.
+#   - workflow_dispatch desde la UI de Actions: compila sin publicar
+#     release (a menos que se pase un tag explícito), útil para iterar
+#     sobre el pipeline Windows sin contaminar la lista de releases.
+#
+# Permisos requeridos: contents: write para publicar la release.
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version a inyectar (ej. 0.1.0-alpha.3). Si vacío, usa 0.0.0-dev.'
+        required: false
+        default: ''
+      publish_release:
+        description: 'Crear release en GitHub al final (necesita "version" no vacía).'
+        type: boolean
+        default: false
+      enable_tmate:
+        description: 'Abrir SSH tmate al runner si Windows falla (debug interactivo, ~30 min de uptime).'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -37,13 +55,20 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Derivar version del tag
+      - name: Derivar version (tag push o workflow_dispatch input)
         id: ver
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VER="${{ github.event.inputs.version }}"
+            if [[ -z "$VER" ]]; then VER="0.0.0-dev"; fi
+            TAG="v$VER"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VER="${TAG#v}"
+          fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "Building version: $VER (tag: $TAG)"
 
       - name: dotnet publish (linux-x64, self-contained)
         run: |
@@ -136,23 +161,58 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Derivar version del tag
+      - name: Derivar version (tag push o workflow_dispatch input)
         id: ver
         shell: pwsh
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          $ver = $tag.TrimStart('v')
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $ver = '${{ github.event.inputs.version }}'
+            if ([string]::IsNullOrWhiteSpace($ver)) { $ver = '0.0.0-dev' }
+            $tag = "v$ver"
+          } else {
+            $tag = $env:GITHUB_REF_NAME
+            $ver = $tag.TrimStart('v')
+          }
           "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "tag=$tag"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version: $ver (tag: $tag)"
 
       - name: Instalar Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
       - name: Construir installer
+        id: build
         shell: pwsh
         working-directory: installer/windows
         run: ./build-server-windows.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      # Si la build de Windows ha fallado y el operario marcó la casilla
+      # enable_tmate en workflow_dispatch, abrir una sesión SSH al runner
+      # via tmate para inspeccionar el estado del sistema en vivo. El
+      # runner sube los logs al output del job y muestra el comando ssh
+      # a copiar. Cierre automático a los ~30 minutos.
+      - name: Tmate debug session (on failure if requested)
+        if: failure() && github.event_name == 'workflow_dispatch' && inputs.enable_tmate
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 30
+        with:
+          limit-access-to-actor: true
+
+      # Subir artefactos parciales aunque la build haya fallado. Útil para
+      # bajar el publish output incompleto, los logs de ISCC o el .iss
+      # temporal y reproducir el fallo en local.
+      - name: Upload Windows debug artifacts (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-debug-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            installer/windows/build/**
+            src/EnterpriseChat.Server/bin/publish/win-x64/**
+            src/EnterpriseChat.TrayMonitor/bin/publish/win-x64/**
 
       # Firma Authenticode opcional. Solo se activa si el secret
       # WINDOWS_SIGNING_CERT_PFX_BASE64 está configurado en el repo.
@@ -200,6 +260,18 @@ jobs:
     name: github-release
     needs: [build-linux, build-windows]
     runs-on: ubuntu-22.04
+    # Solo publica release oficial si:
+    #   - El disparo es push de tag v* (modo "production").
+    #   - O es workflow_dispatch con publish_release=true Y version no vacía.
+    # En cualquier otro caso (workflow_dispatch sin publish_release, smoke
+    # del pipeline) los jobs build-* corren igual, pero este job se salta
+    # y los artefactos quedan disponibles 90 días en Actions sin
+    # contaminar la página /releases.
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.publish_release == true &&
+       inputs.version != '')
     steps:
       - uses: actions/checkout@v4
 
