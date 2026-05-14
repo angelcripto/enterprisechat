@@ -42,12 +42,14 @@
 #define MyServiceName "EnterpriseChat"
 #define MyServiceDisplayName "EnterpriseChat Server"
 #define MyServiceDescription "Servidor de chat empresarial EnterpriseChat (.NET 8 + SignalR + SQLite). Escucha en el puerto 5080."
-#define MyPublishDir  "..\..\src\EnterpriseChat.Server\bin\publish\win-x64"
-#define MyOutputDir   "build"
-#define MyLicenseFile "LICENSE-es.txt"
+#define MyPublishDir     "..\..\src\EnterpriseChat.Server\bin\publish\win-x64"
+#define MyTrayPublishDir "..\..\src\EnterpriseChat.TrayMonitor\bin\publish\win-x64"
+#define MyOutputDir      "build"
+#define MyLicenseFile    "LICENSE-es.txt"
 #define MyLicenseFileOfficial "..\..\LICENSE"
-#define MyReadmeFile  "README-INSTALL-es.txt"
-#define MyIconFile    "assets\enterprisechat.ico"
+#define MyReadmeFile     "README-INSTALL-es.txt"
+#define MyIconFile       "assets\enterprisechat.ico"
+#define MyTrayExe        "EnterpriseChat.TrayMonitor.exe"
 
 [Setup]
 AppId={{#MyAppId}}
@@ -93,10 +95,15 @@ Name: "startservice"; Description: "Arrancar el servicio EnterpriseChat al final
 Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; GroupDescription: "Iconos adicionales:"; Flags: checkedonce
 
 [Files]
-; Publish output completo (binario self-contained + wwwroot + appsettings.json default).
+; Publish output completo del Server (binario self-contained + wwwroot + appsettings.json default).
 Source: "{#MyPublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#MyLicenseFileOfficial}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#MyIconFile}"; DestDir: "{app}"; DestName: "enterprisechat.ico"; Flags: ignoreversion
+
+; TrayMonitor: app WPF que aparece en la bandeja del sistema con el estado
+; del servicio y los botones de Start/Stop/Restart. Self-contained,
+; vive en {app}\TrayMonitor.
+Source: "{#MyTrayPublishDir}\*"; DestDir: "{app}\TrayMonitor"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
 Name: "{app}\data";    Permissions: users-modify
@@ -105,8 +112,10 @@ Name: "{app}\certs";   Permissions: users-modify
 
 [Icons]
 ; Carpeta del Menú Inicio. Iconos con el .ico empaquetado para que tengan
-; identidad visual en lugar del icono genérico de Windows.
-Name: "{group}\Abrir panel admin EnterpriseChat"; Filename: "http://localhost:5080/"; IconFilename: "{app}\enterprisechat.ico"
+; identidad visual en lugar del icono genérico de Windows. El shortcut
+; principal abre el TrayMonitor (UI de estado del servicio).
+Name: "{group}\EnterpriseChat (panel)"; Filename: "{app}\TrayMonitor\{#MyTrayExe}"; IconFilename: "{app}\enterprisechat.ico"; Comment: "Abre el monitor del servicio EnterpriseChat (icono en la bandeja)"
+Name: "{group}\Abrir panel admin (web)"; Filename: "http://localhost:5080/"; IconFilename: "{app}\enterprisechat.ico"
 Name: "{group}\Arrancar servicio"; Filename: "{sys}\sc.exe"; Parameters: "start {#MyServiceName}"; IconFilename: "{app}\enterprisechat.ico"; Comment: "Inicia el servicio Windows EnterpriseChat (requiere admin)"
 Name: "{group}\Detener servicio"; Filename: "{sys}\sc.exe"; Parameters: "stop {#MyServiceName}"; IconFilename: "{app}\enterprisechat.ico"; Comment: "Detiene el servicio Windows EnterpriseChat (requiere admin)"
 Name: "{group}\Reiniciar servicio"; Filename: "{cmd}"; Parameters: "/C ""sc stop {#MyServiceName} & timeout /t 3 /nobreak >NUL & sc start {#MyServiceName}"""; IconFilename: "{app}\enterprisechat.ico"; Comment: "Detiene y arranca el servicio (requiere admin)"
@@ -114,7 +123,14 @@ Name: "{group}\Documentación"; Filename: "{#MyAppURL}"; IconFilename: "{app}\en
 Name: "{group}\Desinstalar EnterpriseChat Server"; Filename: "{uninstallexe}"; IconFilename: "{app}\enterprisechat.ico"
 
 ; Acceso directo en el escritorio (opcional, controlado por task).
-Name: "{autodesktop}\EnterpriseChat (panel admin)"; Filename: "http://localhost:5080/"; IconFilename: "{app}\enterprisechat.ico"; Tasks: desktopicon
+Name: "{autodesktop}\EnterpriseChat"; Filename: "{app}\TrayMonitor\{#MyTrayExe}"; IconFilename: "{app}\enterprisechat.ico"; Tasks: desktopicon
+
+[Registry]
+; Autostart per-user del TrayMonitor: al iniciar sesion Windows, la app
+; aparece en la bandeja del sistema. Per-user (HKCU) en lugar de HKLM
+; porque cada admin que se loguee tendra su instancia. Si el admin del
+; VPS quiere desactivar el autoarranque, borra esta clave o usa msconfig.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EnterpriseChat"; ValueData: """{app}\TrayMonitor\{#MyTrayExe}"""; Flags: uninsdeletevalue
 
 [Run]
 ; Detener cualquier instancia previa (idempotente) antes de tocar archivos —
@@ -129,10 +145,20 @@ Filename: "sc.exe"; Parameters: "description {#MyServiceName} ""{#MyServiceDescr
 ; Arrancar el servicio (solo si el admin dejó la casilla marcada).
 Filename: "sc.exe"; Parameters: "start {#MyServiceName}"; Flags: runhidden; StatusMsg: "Arrancando servicio..."; Tasks: startservice
 
+; Arrancar TrayMonitor para el usuario actual tras instalar. runasoriginaluser
+; baja privilegios desde el contexto admin del wizard al usuario que pulso
+; el .exe — necesario para que el HKCU Run quede en su perfil, no en el
+; del SYSTEM/admin elevado.
+Filename: "{app}\TrayMonitor\{#MyTrayExe}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Description: "Lanzar EnterpriseChat (panel) ahora"
+
 ; Abrir el panel admin tras instalar (solo modo interactivo, no /VERYSILENT).
-Filename: "http://localhost:5080/"; Flags: shellexec postinstall nowait skipifsilent; Description: "Abrir el panel admin de EnterpriseChat"
+Filename: "http://localhost:5080/"; Flags: shellexec postinstall nowait skipifsilent unchecked; Description: "Abrir el panel admin de EnterpriseChat (web)"
 
 [UninstallRun]
+; Cierra el TrayMonitor antes de eliminar archivos para liberar el .exe
+; (de lo contrario, Inno se queja de "no se puede eliminar archivo en uso").
+; /F = forzar, /IM = match por nombre de imagen. Ignora errores si no está corriendo.
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyTrayExe}"; Flags: runhidden; RunOnceId: "KillTray"
 Filename: "sc.exe"; Parameters: "stop {#MyServiceName}"; Flags: runhidden; RunOnceId: "StopService"
 Filename: "sc.exe"; Parameters: "delete {#MyServiceName}"; Flags: runhidden; RunOnceId: "DeleteService"
 

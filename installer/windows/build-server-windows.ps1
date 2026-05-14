@@ -27,12 +27,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Here   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Repo   = Resolve-Path (Join-Path $Here '..\..')
-$Server = Join-Path $Repo 'src\EnterpriseChat.Server\EnterpriseChat.Server.csproj'
-$Pub    = Join-Path $Repo 'src\EnterpriseChat.Server\bin\publish\win-x64'
-$Iss    = Join-Path $Here 'enterprisechat-server.iss'
-$Out    = Join-Path $Here 'build'
+$Here       = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Repo       = Resolve-Path (Join-Path $Here '..\..')
+$Server     = Join-Path $Repo 'src\EnterpriseChat.Server\EnterpriseChat.Server.csproj'
+$TrayProj   = Join-Path $Repo 'src\EnterpriseChat.TrayMonitor\EnterpriseChat.TrayMonitor.csproj'
+$Pub        = Join-Path $Repo 'src\EnterpriseChat.Server\bin\publish\win-x64'
+$TrayPub    = Join-Path $Repo 'src\EnterpriseChat.TrayMonitor\bin\publish\win-x64'
+$Iss        = Join-Path $Here 'enterprisechat-server.iss'
+$Out        = Join-Path $Here 'build'
 
 function Find-IsccExe {
     $candidates = @(
@@ -52,10 +54,26 @@ if ($SkipPublish) {
     if (-not (Test-Path (Join-Path $Pub 'EnterpriseChat.Server.exe'))) {
         throw "SkipPublish: no se encontro un publish previo en $Pub. Ejecuta el script una vez sin -SkipPublish."
     }
-    Write-Host "==> Saltando dotnet publish (-SkipPublish, reutilizando $Pub)" -ForegroundColor DarkYellow
+    if (-not (Test-Path (Join-Path $TrayPub 'EnterpriseChat.TrayMonitor.exe'))) {
+        throw "SkipPublish: falta publish previo del TrayMonitor en $TrayPub. Ejecuta sin -SkipPublish primero."
+    }
+    Write-Host "==> Saltando dotnet publish (-SkipPublish, reutilizando $Pub + $TrayPub)" -ForegroundColor DarkYellow
 } else {
-    Write-Host "==> dotnet publish (win-x64, self-contained, single-file)" -ForegroundColor Cyan
+    Write-Host "==> dotnet publish Server (win-x64, self-contained, single-file)" -ForegroundColor Cyan
     if (Test-Path $Pub) { Remove-Item -Recurse -Force $Pub }
+
+    # Detectar si el SPA Vue ya esta construido en wwwroot/. Si lo esta
+    # pasamos -p:BuildSpa=false para no requerir npm/vite instalados en
+    # esta maquina (util cuando el SPA se compilo en WSL o en CI con Linux
+    # y no queremos reinstalar node_modules de Windows). Si no esta
+    # construido, dejamos que el target del csproj corra npm ci + vite.
+    $SpaIndex = Join-Path $Repo 'src\EnterpriseChat.Server\wwwroot\index.html'
+    if (Test-Path $SpaIndex) {
+        Write-Host "    SPA wwwroot/index.html ya presente -> -p:BuildSpa=false" -ForegroundColor DarkYellow
+        $spaArgs = '-p:BuildSpa=false'
+    } else {
+        $spaArgs = ''
+    }
 
     dotnet publish $Server `
         -c Release `
@@ -66,13 +84,30 @@ if ($SkipPublish) {
         -p:DebugSymbols=true `
         -p:IncludeNativeLibrariesForSelfExtract=true `
         -p:Version=$Version `
+        $spaArgs `
         -o $Pub
 
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish fallo' }
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish Server fallo' }
 
     # Eliminar appsettings.Development.json del paquete (no debe viajar a prod).
     $devSettings = Join-Path $Pub 'appsettings.Development.json'
     if (Test-Path $devSettings) { Remove-Item $devSettings }
+
+    Write-Host "==> dotnet publish TrayMonitor (win-x64, self-contained, single-file)" -ForegroundColor Cyan
+    if (Test-Path $TrayPub) { Remove-Item -Recurse -Force $TrayPub }
+
+    dotnet publish $TrayProj `
+        -c Release `
+        -r win-x64 `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:DebugType=embedded `
+        -p:DebugSymbols=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:Version=$Version `
+        -o $TrayPub
+
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish TrayMonitor fallo' }
 }
 
 Write-Host '==> Compilando installer Inno Setup' -ForegroundColor Cyan
