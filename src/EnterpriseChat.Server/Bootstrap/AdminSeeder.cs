@@ -42,7 +42,12 @@ internal static class AdminSeeder
             Role = UserRole.Admin,
             PasswordHash = hasher.Hash(adminPassword),
             IsActive = true,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            // SourceProviderId = null marca al admin como usuario local
+            // de rescate: AuthEndpoints lo enruta SIEMPRE al provider
+            // Internal aunque haya providers externos configurados.
+            SourceProviderId = null,
+            ExternalId = null,
         };
         db.Users.Add(admin);
         db.AuditLogs.Add(new AuditLog

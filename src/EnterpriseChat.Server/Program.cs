@@ -1,6 +1,7 @@
 using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Server.Auth;
 using EnterpriseChat.Server.Bootstrap;
+using EnterpriseChat.Server.Crypto;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Admin;
 using EnterpriseChat.Server.Engagement;
@@ -55,6 +56,18 @@ try
         .ReadFrom.Configuration(ctx.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext());
+
+    // Master key del crypto symmetric. Tiene que estar lista ANTES de
+    // que se registren providers externos: cifran credenciales con ella
+    // y abortar tarde implicaría un fallo en la primera petición admin.
+    using (var bootstrapLoggerFactory = LoggerFactory.Create(b => b.AddSerilog(Log.Logger)))
+    {
+        var masterKeyBytes = MasterKeyInitializer.EnsureMasterKey(
+            builder.Configuration,
+            builder.Environment,
+            bootstrapLoggerFactory.CreateLogger("Bootstrap.MasterKey"));
+        builder.Services.AddSingleton(new AppCrypto(masterKeyBytes));
+    }
 
     builder.Services.AddSignalR();
     builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, EnterpriseChat.Server.Auth.SubClaimUserIdProvider>();

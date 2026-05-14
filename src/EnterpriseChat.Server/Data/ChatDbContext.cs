@@ -17,6 +17,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<PinnedMessage> PinnedMessages => Set<PinnedMessage>();
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<SavedMessage> SavedMessages => Set<SavedMessage>();
+    public DbSet<AuthProviderConfig> AuthProviders => Set<AuthProviderConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,26 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         {
             b.HasIndex(u => u.Username).IsUnique();
             b.Property(u => u.Role).HasConversion<int>();
+
+            // El par (proveedor, externalId) identifica de forma única
+            // a un usuario en su sistema de origen. Permite tener dos
+            // usuarios distintos con el mismo externalId siempre que
+            // provengan de proveedores diferentes.
+            b.HasIndex(u => new { u.SourceProviderId, u.ExternalId })
+                .IsUnique()
+                .HasFilter("\"ExternalId\" IS NOT NULL");
+
+            b.HasOne(u => u.SourceProvider)
+                .WithMany()
+                .HasForeignKey(u => u.SourceProviderId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<AuthProviderConfig>(b =>
+        {
+            b.Property(p => p.Kind).HasConversion<int>();
+            b.Property(p => p.HashAlgorithm).HasConversion<int>();
+            b.HasIndex(p => p.Priority);
         });
 
         modelBuilder.Entity<Department>(b =>

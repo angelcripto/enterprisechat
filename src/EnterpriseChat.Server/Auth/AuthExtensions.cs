@@ -1,4 +1,6 @@
 using System.Text;
+using EnterpriseChat.Server.Auth.Hashers;
+using EnterpriseChat.Server.Auth.Providers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -18,6 +20,15 @@ internal static class AuthExtensions
 
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<JwtTokenIssuer>();
+
+        // Verificadores de hash para providers externos (PR 1 deja el
+        // registro instalado aunque solo Internal esté activo).
+        services.AddSingleton<HashVerifierRegistry>();
+
+        // Provider Internal siempre presente; PRs siguientes registran
+        // MySQL / CSV / HTTP al lado.
+        services.AddSingleton<IAuthProvider, InternalAuthProvider>();
+        services.AddSingleton<AuthProviderRegistry>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer();

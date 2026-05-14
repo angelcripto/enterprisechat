@@ -42,4 +42,23 @@ public sealed class User
     /// </summary>
     [MaxLength(128)]
     public string? AvatarFileName { get; set; }
+
+    /// <summary>
+    /// Identificador estable del usuario en el sistema externo
+    /// (e.g. la PK de la tabla de usuarios de MySQL, el GUID del CSV,
+    /// el sub del webhook). Si null, el usuario es nativo del SQLite
+    /// local. Permite renombrar al usuario externo sin perder mensajes
+    /// ni sesión locales.
+    /// </summary>
+    [MaxLength(256)]
+    public string? ExternalId { get; set; }
+
+    /// <summary>
+    /// FK al <c>AuthProviderConfig</c> que dio de alta al usuario.
+    /// Null para usuarios locales (incluido el admin de rescate).
+    /// </summary>
+    public int? SourceProviderId { get; set; }
+
+    [ForeignKey(nameof(SourceProviderId))]
+    public AuthProviderConfig? SourceProvider { get; set; }
 }
