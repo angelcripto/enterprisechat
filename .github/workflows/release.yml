@@ -13,6 +13,12 @@ on:
 permissions:
   contents: write
 
+env:
+  # Las acciones @v4 corren sobre Node.js 20, que GitHub marca deprecated.
+  # Forzamos Node 24 desde ya para evitar el warning hasta que las acciones
+  # publiquen versiones nativas en Node 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   # =======================================================================
   # Linux .deb
