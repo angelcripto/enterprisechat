@@ -99,7 +99,7 @@ public sealed partial class MainViewModel : ObservableObject
         // tiene como padre el install dir del servidor.
         // AppContext.BaseDirectory funciona con PublishSingleFile (Assembly.Location no).
         var trayDir = AppContext.BaseDirectory;
-        var serverDir = Path.GetFullPath(Path.Combine(trayDir, ".."));
+        var serverDir = InstallDirLocator.FindServerInstallDir(trayDir);
         _logTail = new LogTail(serverDir);
         _passwordReset = new AdminPasswordResetClient(serverDir);
 
@@ -110,6 +110,9 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         await RefreshAsync().ConfigureAwait(true);
+        // Forzar primera re-evaluación de CanExecute tras descubrir si el
+        // binario del server existe (el constructor solo asigna campos).
+        ChangeAdminPasswordCommand.NotifyCanExecuteChanged();
         _poll.Start();
     }
 
@@ -207,7 +210,12 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanChangePassword() => !IsBusy && ServiceInstalled && _passwordReset.ServerBinaryExists();
+    // No exigimos ServiceInstalled: el CLI --reset-admin-password reescribe
+    // el hash BCrypt directamente en chat.db, asi que funciona aunque el
+    // servicio este Stopped o ni siquiera registrado en el SCM (caso util
+    // si el operador esta recuperando acceso despues de borrar el
+    // servicio pero conservar los datos).
+    private bool CanChangePassword() => !IsBusy && _passwordReset.ServerBinaryExists();
 
     [RelayCommand]
     private void OpenAdmin()
