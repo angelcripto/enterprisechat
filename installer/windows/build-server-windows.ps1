@@ -68,12 +68,22 @@ Write-Host '==> Compilando installer Inno Setup' -ForegroundColor Cyan
 $Iscc = Find-IsccExe
 Write-Host "    ISCC: $Iscc"
 
+# VersionInfoVersion necesita ser numerico estricto (major.minor.build.revision).
+# Si la version trae un suffix de pre-release (-alpha.1, -rc.2, etc) le quitamos
+# todo a partir del '-' y completamos a 4 partes.
+$NumericVersion = ($Version -replace '-.*$','')
+$parts = $NumericVersion.Split('.')
+while ($parts.Length -lt 4) { $parts += '0' }
+$VersionInfo = ($parts[0..3] -join '.')
+Write-Host "    Version display:    $Version"
+Write-Host "    Version info (PE):  $VersionInfo"
+
 # Sustituir version en el .iss en una copia temporal para evitar tocar el original.
 $IssTmp = Join-Path $env:TEMP "ec-installer-$([guid]::NewGuid().ToString('N')).iss"
 (Get-Content $Iss -Raw) -replace '(?m)^\s*#define\s+MyAppVersion\s+".*"', "#define MyAppVersion `"$Version`"" | Set-Content -Path $IssTmp -Encoding UTF8
 
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
-& $Iscc /Q /O$Out $IssTmp
+& $Iscc /Q /O$Out "/DMyVersionInfoVersion=$VersionInfo" $IssTmp
 if ($LASTEXITCODE -ne 0) {
     Remove-Item $IssTmp -ErrorAction SilentlyContinue
     throw 'ISCC fallo'

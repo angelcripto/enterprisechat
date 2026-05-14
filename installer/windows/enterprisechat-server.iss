@@ -26,6 +26,12 @@
 #define MyAppId       "{B7E4F2A1-9C8D-4F3E-A6B5-1D2E3F4A5B6C}"
 #define MyAppName     "EnterpriseChat Server"
 #define MyAppVersion  "0.1.0"
+; VersionInfoVersion necesita formato numerico estricto (major.minor.build.revision).
+; Si MyAppVersion incluye un suffix de pre-release (-alpha, -rc, etc), build-server-windows.ps1
+; sobreescribe MyVersionInfoVersion con la parte numerica. Por defecto = MyAppVersion + ".0".
+#ifndef MyVersionInfoVersion
+  #define MyVersionInfoVersion MyAppVersion + ".0"
+#endif
 #define MyAppPublisher "EnterpriseChat"
 #define MyAppURL      "https://enterprisechat.es"
 #define MyServiceName "EnterpriseChat"
@@ -44,7 +50,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/contacto
 AppUpdatesURL={#MyAppURL}/descargar
-VersionInfoVersion={#MyAppVersion}.0
+VersionInfoVersion={#MyVersionInfoVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} {#MyAppVersion}
 
