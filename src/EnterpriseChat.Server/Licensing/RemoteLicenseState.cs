@@ -11,7 +11,11 @@ namespace EnterpriseChat.Server.Licensing;
 /// </summary>
 public sealed class RemoteLicenseState
 {
-    public const int DefaultFreeCap = 10;
+    // Free anónima: el servidor recién instalado, sin clave, queda capado
+    // a 5 usuarios concurrentes. Para subir a 10 el cliente debe registrarse
+    // en enterprisechat.es, verificar email y pegar el serial Free emitido
+    // (que en el JWT viene con edition='free' y max_users=10).
+    public const int DefaultFreeCap = 5;
     public static readonly LicenseInfo DefaultFree = new(
         Edition: LicenseEdition.Free,
         MaxConcurrentUsers: DefaultFreeCap,
