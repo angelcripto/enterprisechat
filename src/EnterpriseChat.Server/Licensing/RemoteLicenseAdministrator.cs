@@ -23,8 +23,16 @@ public sealed class RemoteLicenseAdministrator(
             return new ApplyLicenseResult(false, error, null);
         }
 
+        // El backend devuelve "edition" como string ("free"/"pro"). Anteriormente
+        // forzábamos Pro siempre: cualquier activación con éxito quedaba como
+        // Pro aunque la clave fuese Free. Mapeamos al enum LicenseEdition para
+        // que el cap, mensajes y UI distingan correctamente las dos tiers.
+        var edition = string.Equals(response.Edition, "free", StringComparison.OrdinalIgnoreCase)
+            ? LicenseEdition.Free
+            : LicenseEdition.Pro;
+
         var info = new LicenseInfo(
-            Edition: LicenseEdition.Pro,
+            Edition: edition,
             MaxConcurrentUsers: response.MaxUsers,
             // The wire JWT is short-TTL (1h). The DISPLAYED expiry comes from
             // there until we widen the activation contract to also return the

@@ -61,7 +61,8 @@ public sealed class LicenseActivationClient(
                 Success: false,
                 Error: $"No se pudo contactar con el servidor de licencias: {ex.Message}",
                 Jwt: null, Jti: null, LicensedTo: null, MaxUsers: 0,
-                Features: Array.Empty<string>(), HeartbeatSeconds: 0);
+                Features: Array.Empty<string>(), HeartbeatSeconds: 0,
+                Edition: null);
         }
 
         var raw = await response.Content.ReadFromJsonAsync<ActivationWire>(cancellationToken: ct);
@@ -71,7 +72,7 @@ public sealed class LicenseActivationClient(
                 Success: false,
                 Error: $"Respuesta no válida del servidor (HTTP {(int)response.StatusCode}).",
                 Jwt: null, Jti: null, LicensedTo: null, MaxUsers: 0,
-                Features: Array.Empty<string>(), HeartbeatSeconds: 0);
+                Features: Array.Empty<string>(), HeartbeatSeconds: 0, Edition: null);
         }
 
         return new ActivationResponse(
@@ -82,7 +83,8 @@ public sealed class LicenseActivationClient(
             LicensedTo: raw.LicensedTo,
             MaxUsers: raw.MaxUsers,
             Features: raw.Features ?? Array.Empty<string>(),
-            HeartbeatSeconds: raw.HeartbeatSeconds > 0 ? raw.HeartbeatSeconds : 1800);
+            HeartbeatSeconds: raw.HeartbeatSeconds > 0 ? raw.HeartbeatSeconds : 1800,
+            Edition: raw.Edition);
     }
 
     private sealed record ActivationWire(
@@ -93,7 +95,8 @@ public sealed class LicenseActivationClient(
         [property: System.Text.Json.Serialization.JsonPropertyName("licensed_to")] string? LicensedTo,
         [property: System.Text.Json.Serialization.JsonPropertyName("max_users")] int MaxUsers,
         string[]? Features,
-        [property: System.Text.Json.Serialization.JsonPropertyName("heartbeat_seconds")] int HeartbeatSeconds);
+        [property: System.Text.Json.Serialization.JsonPropertyName("heartbeat_seconds")] int HeartbeatSeconds,
+        string? Edition);
 }
 
 public sealed record ActivationResponse(
@@ -104,4 +107,5 @@ public sealed record ActivationResponse(
     string? LicensedTo,
     int MaxUsers,
     string[] Features,
-    int HeartbeatSeconds);
+    int HeartbeatSeconds,
+    string? Edition);
