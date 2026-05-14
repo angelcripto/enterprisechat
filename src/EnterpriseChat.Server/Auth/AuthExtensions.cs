@@ -21,13 +21,12 @@ internal static class AuthExtensions
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<JwtTokenIssuer>();
 
-        // Verificadores de hash para providers externos (PR 1 deja el
-        // registro instalado aunque solo Internal esté activo).
+        // Verificadores de hash para providers externos.
         services.AddSingleton<HashVerifierRegistry>();
 
-        // Provider Internal siempre presente; PRs siguientes registran
-        // MySQL / CSV / HTTP al lado.
-        services.AddSingleton<IAuthProvider, InternalAuthProvider>();
+        // Internal siempre presente. El resto los materializa el registry
+        // dinámicamente a partir de AuthProviderConfig (PR 2: MySQL).
+        services.AddSingleton<InternalAuthProvider>();
         services.AddSingleton<AuthProviderRegistry>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

@@ -1,9 +1,11 @@
 using EnterpriseChat.Protocol;
 using EnterpriseChat.Server.Auth.Providers;
+using EnterpriseChat.Server.Auth.Providers.MySql;
 using EnterpriseChat.Server.Bootstrap;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace EnterpriseChat.Server.Auth;
 
@@ -136,12 +138,9 @@ internal static class AuthEndpoints
     }
 
     /// <summary>
-    /// Localiza la fila local del usuario tras un login exitoso.
-    /// Para el provider Internal el usuario ya existe (lo creó el admin
-    /// o el seeder). Para providers externos, PR 1 NO autoprovisiona —
-    /// si el usuario no tiene cuenta local todavía, devolvemos null y
-    /// el endpoint responde 401. El autoaprovisionamiento se añade en
-    /// PRs siguientes junto con la importación CSV / sync MySQL.
+    /// Localiza la fila local del usuario tras un login exitoso. Si el
+    /// provider externo lo permite (flag <c>AutoProvision</c> en su
+    /// config), creamos la fila local en este momento.
     /// </summary>
     private static async Task<User?> ResolveLocalUserAsync(
         ChatDbContext db,
@@ -157,17 +156,94 @@ internal static class AuthEndpoints
 
         // Match preferente por (SourceProviderId, ExternalId) si tenemos
         // externalId; fallback por Username + SourceProviderId.
+        User? existing = null;
         if (!string.IsNullOrEmpty(result.ExternalId))
         {
-            var byExternal = await db.Users.SingleOrDefaultAsync(
+            existing = await db.Users.SingleOrDefaultAsync(
                 u => u.SourceProviderId == provider.ProviderId && u.ExternalId == result.ExternalId,
                 ct);
-            if (byExternal is not null) return byExternal;
         }
-
-        return await db.Users.SingleOrDefaultAsync(
+        existing ??= await db.Users.SingleOrDefaultAsync(
             u => u.Username == username && u.SourceProviderId == provider.ProviderId,
             ct);
+
+        if (existing is not null)
+        {
+            // Mantenemos metadatos en sync si el provider los expuso.
+            if (!string.IsNullOrEmpty(result.FullName) && existing.FullName != result.FullName)
+            {
+                existing.FullName = result.FullName;
+            }
+            if (!string.IsNullOrEmpty(result.Email) && existing.Email != result.Email)
+            {
+                existing.Email = result.Email;
+            }
+            return existing;
+        }
+
+        if (!await ShouldAutoProvisionAsync(db, provider, ct))
+        {
+            return null;
+        }
+
+        // Colisión: que no exista por (provider, externalId) ni por
+        // (provider, username) no garantiza que el Username sea único
+        // en la tabla local — puede chocar con un admin o con otro
+        // provider. SQLite es UNIQUE en Username; ante choque,
+        // rechazamos el login y dejamos el conflicto al admin.
+        var collision = await db.Users.AnyAsync(u => u.Username == username, ct);
+        if (collision)
+        {
+            return null;
+        }
+
+        var newUser = new User
+        {
+            Username = username,
+            FullName = string.IsNullOrEmpty(result.FullName) ? username : result.FullName!,
+            Email = result.Email,
+            Role = UserRole.User,
+            PasswordHash = "external", // Sentinel: nunca lo verifica nadie.
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            SourceProviderId = provider.ProviderId,
+            ExternalId = result.ExternalId,
+        };
+        db.Users.Add(newUser);
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorUserId = null,
+            Action = "user.autoprovision",
+            Target = newUser.Username,
+            Details = $"provider:{provider.Kind}#{provider.ProviderId}",
+        });
+        await db.SaveChangesAsync(ct);
+        return newUser;
+    }
+
+    private static async Task<bool> ShouldAutoProvisionAsync(
+        ChatDbContext db,
+        IAuthProvider provider,
+        CancellationToken ct)
+    {
+        // PR 2 solo MySQL tiene flag; el resto (Http/Csv) lo añadirán.
+        if (provider.Kind != AuthProviderKind.Mysql) return false;
+
+        var row = await db.AuthProviders
+            .Where(p => p.Id == provider.ProviderId)
+            .Select(p => new { p.ConfigJson })
+            .SingleOrDefaultAsync(ct);
+        if (row is null) return false;
+
+        try
+        {
+            var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson);
+            return pub?.AutoProvision ?? false;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static async Task WriteAuditAsync(

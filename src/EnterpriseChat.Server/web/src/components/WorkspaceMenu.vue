@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ChevronDown, Shield, UserPlus, LogOut } from "lucide-vue-next";
+import { ChevronDown, Shield, ShieldCheck, UserPlus, LogOut } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { useLicenseStore } from "@/stores/license";
 import { chatHub } from "@/services/signalr";
@@ -28,6 +28,11 @@ onBeforeUnmount(() => { document.removeEventListener("click", onDocClick); });
 function goLicense(): void {
     close();
     void router.push({ name: "admin-license" });
+}
+
+function goAuthProviders(): void {
+    close();
+    void router.push({ name: "admin-auth-providers" });
 }
 
 const emit = defineEmits<{ (e: "invite"): void }>();
@@ -67,6 +72,10 @@ async function logout(): Promise<void> {
             <button v-if="auth.isAdmin" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" @click="goLicense">
                 <Shield class="w-4 h-4 text-slate-500" />
                 Gestionar licencia
+            </button>
+            <button v-if="auth.isAdmin" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" @click="goAuthProviders">
+                <ShieldCheck class="w-4 h-4 text-slate-500" />
+                Autenticación externa
             </button>
             <button v-if="auth.isAdmin" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" @click="invite">
                 <UserPlus class="w-4 h-4 text-slate-500" />

@@ -104,6 +104,8 @@ try
         app.Services,
         app.Configuration,
         app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap"));
+    await app.Services.GetRequiredService<EnterpriseChat.Server.Auth.Providers.AuthProviderRegistry>()
+        .ReloadAsync();
     await LicenseStartupRestorer.RestoreAsync(
         app.Services,
         app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Licensing"));
@@ -129,6 +131,7 @@ try
     app.MapAuthEndpoints();
     app.MapUserEndpoints();
     app.MapAdminEndpoints();
+    app.MapAuthProviderAdminEndpoints();
     app.MapRoomEndpoints();
     app.MapSearchEndpoints();
     app.MapFileEndpoints();
