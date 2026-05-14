@@ -6,6 +6,8 @@ import { useRoomsStore } from "@/stores/rooms";
 import { useUsersStore } from "@/stores/users";
 import { useMessagesStore } from "@/stores/messages";
 import { useLicenseStore } from "@/stores/license";
+import { useReactionsStore } from "@/stores/reactions";
+import { usePinnedStore } from "@/stores/pinned";
 import { chatHub } from "@/services/signalr";
 import type { ChatMessage, ThreadKey } from "@/api/types";
 import Sidebar from "@/components/Sidebar.vue";
@@ -24,6 +26,8 @@ const rooms = useRoomsStore();
 const users = useUsersStore();
 const messages = useMessagesStore();
 const license = useLicenseStore();
+const reactionsStore = useReactionsStore();
+const pinned = usePinnedStore();
 
 const connecting = ref(true);
 const connectError = ref<string | null>(null);
@@ -62,6 +66,14 @@ function handleMessageRead(serverId: number, byUserId: number): void { messages.
 function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId); }
 function handleLicenseDenied(reason: string): void { connectError.value = `Conexión rechazada por licencia: ${reason}`; }
 function handleRoomMembership(_roomId: number, _userId: number, _joined: boolean): void { void rooms.load(); }
+function handleReactionChanged(messageId: number, _userId: number, _emoji: string, _added: boolean): void {
+    // Authoritative recount comes from the server: re-fetch the counts/mine flag
+    // instead of guessing locally, which would diverge after a connection blip.
+    void reactionsStore.load(messageId);
+}
+function handlePinnedChanged(roomId: number, _messageId: number, _pinned: boolean): void {
+    void pinned.loadForRoom(roomId);
+}
 
 onMounted(async () => {
     if (auth.userId === null) return;
@@ -74,6 +86,8 @@ onMounted(async () => {
         chatHub.on("OnTyping", handleTyping);
         chatHub.on("OnLicenseDenied", handleLicenseDenied);
         chatHub.on("OnRoomMembershipChanged", handleRoomMembership);
+        chatHub.on("OnReactionChanged", handleReactionChanged);
+        chatHub.on("OnPinnedChanged", handlePinnedChanged);
         await Promise.all([rooms.load(), users.load(), license.load()]);
         connecting.value = false;
         if (activeThread.value !== null) {
@@ -93,6 +107,8 @@ onBeforeUnmount(async () => {
     chatHub.off("OnTyping", handleTyping);
     chatHub.off("OnLicenseDenied", handleLicenseDenied);
     chatHub.off("OnRoomMembershipChanged", handleRoomMembership);
+    chatHub.off("OnReactionChanged", handleReactionChanged);
+    chatHub.off("OnPinnedChanged", handlePinnedChanged);
     await chatHub.stop();
 });
 

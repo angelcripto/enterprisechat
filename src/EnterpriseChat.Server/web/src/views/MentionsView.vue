@@ -22,7 +22,7 @@ function authorHasAvatar(userId: number): boolean {
     return users.findById(userId)?.hasAvatar ?? false;
 }
 
-function goTo(m: { roomId: number | null | undefined; fromUserId: number }): void {
+function goTo(m: { roomId?: number | null; fromUserId: number }): void {
     if (m.roomId !== null && m.roomId !== undefined) {
         void router.push({ name: "channel", params: { roomId: String(m.roomId) } });
     } else {

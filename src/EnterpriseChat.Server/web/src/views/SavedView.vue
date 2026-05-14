@@ -18,7 +18,7 @@ function authorName(userId: number): string {
     return users.findById(userId)?.fullName ?? "Usuario";
 }
 
-function goTo(m: { roomId: number | null | undefined; fromUserId: number }): void {
+function goTo(m: { roomId?: number | null; fromUserId: number }): void {
     if (m.roomId !== null && m.roomId !== undefined) {
         void router.push({ name: "channel", params: { roomId: String(m.roomId) } });
     } else {

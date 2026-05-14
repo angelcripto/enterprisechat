@@ -20,6 +20,8 @@ export type ChatHubEventMap = {
     OnMessageRead: (serverId: number, byUserId: number, readAt: string) => void;
     OnTyping: (fromUserId: number, toUserId: number | null, roomId: number | null) => void;
     OnLicenseDenied: (reason: string) => void;
+    OnReactionChanged: (messageId: number, userId: number, emoji: string, added: boolean) => void;
+    OnPinnedChanged: (roomId: number, messageId: number, pinned: boolean) => void;
 };
 
 class ChatHubService {

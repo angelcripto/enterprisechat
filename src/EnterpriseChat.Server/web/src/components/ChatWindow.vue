@@ -7,6 +7,7 @@ import type { ThreadKey } from "@/api/types";
 import { threadKeyId } from "@/api/types";
 import MessageList from "./MessageList.vue";
 import MessageInput from "./MessageInput.vue";
+import PinnedRibbon from "./PinnedRibbon.vue";
 
 const props = defineProps<{ thread: ThreadKey }>();
 
@@ -47,6 +48,8 @@ const isLoading = computed(() => messages.loadingThreads[threadKeyId(props.threa
                 <span class="text-xs text-slate-500">{{ headerSubtitle }}</span>
             </div>
         </header>
+
+        <PinnedRibbon v-if="thread.kind === 'room'" :room-id="thread.roomId" />
 
         <div class="flex-1 overflow-hidden">
             <div v-if="isLoading" class="h-full grid place-items-center text-sm text-slate-500">Cargando historial…</div>
