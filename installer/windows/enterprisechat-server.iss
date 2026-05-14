@@ -151,6 +151,13 @@ var
   JwtSigningKey: string;
   PurgeDataPage: TInputOptionWizardPage;
   PurgeData: Boolean;
+  // Controles dinámicos en la pantalla final para que el admin pueda
+  // copiar la contraseña inicial al portapapeles. WizardForm.FinishedLabel
+  // es un label estatico que no permite seleccionar texto, asi que
+  // pintamos un TNewEdit ReadOnly + boton Copiar encima.
+  FinPwdEdit: TNewEdit;
+  FinPwdCopyBtn: TNewButton;
+  FinPwdOpenBtn: TNewButton;
 
 // ----- Helpers ------------------------------------------------------------
 
@@ -332,21 +339,100 @@ end;
 
 // ----- Pantalla final con contraseña ---
 
+procedure FinPwdCopyClick(Sender: TObject);
+var
+  TempFile: string;
+  Code: Integer;
+begin
+  // Inno PascalScript no expone Clipboard ni TEdit.CopyToClipboard. Usamos
+  // el `clip.exe` de Windows (cmd /C type <file> | clip) que copia el
+  // contenido de un archivo al portapapeles. El password es ASCII alfanumerico
+  // y se persiste en un temp file que borramos inmediatamente despues.
+  TempFile := ExpandConstant('{tmp}\ec-pwdclip.txt');
+  SaveStringToFile(TempFile, AdminPassword, False);
+  Exec(ExpandConstant('{cmd}'),
+       '/C type "' + TempFile + '" | clip',
+       '', SW_HIDE, ewWaitUntilTerminated, Code);
+  DeleteFile(TempFile);
+  if FinPwdCopyBtn <> nil then
+    FinPwdCopyBtn.Caption := 'Copiada';
+end;
+
+procedure FinPwdOpenFileClick(Sender: TObject);
+var
+  PwdFile: string;
+  Code: Integer;
+begin
+  // Abre la carpeta de instalación con el archivo .first-admin-password
+  // seleccionado para que el admin pueda consultarlo si cerro la pantalla.
+  PwdFile := ExpandConstant('{app}\.first-admin-password');
+  if FileExists(PwdFile) then
+    ShellExec('open', 'notepad.exe', '"' + PwdFile + '"', '', SW_SHOW, ewNoWait, Code)
+  else
+    MsgBox('La contraseña ya se ha consumido y el archivo se ha borrado. Usa "Copiar" antes de cerrar este asistente, o regenera la contraseña con EnterpriseChat.Server.exe --reset-admin-password <nueva>.',
+           mbInformation, MB_OK);
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 var
   Info: string;
+  BaseTop: Integer;
 begin
   if CurPageID = wpFinished then begin
     Info :=
       'Instalación completada.' + #13#10 + #13#10 +
       'URL admin:  http://<este-equipo>:5080/' + #13#10 +
       'Usuario:    admin' + #13#10 +
-      'Contraseña: ' + AdminPassword + #13#10 + #13#10 +
-      'Esta contraseña se ha guardado también en:' + #13#10 +
-      '  ' + ExpandConstant('{app}\.first-admin-password') + #13#10 + #13#10 +
-      'Cámbiala en el primer login. Si la pierdes, regenérala con:' + #13#10 +
-      '  EnterpriseChat.Server.exe --reset-admin-password <nueva>';
+      'Contraseña (cópiala antes de cerrar):';
     WizardForm.FinishedLabel.Caption := Info;
+
+    // El label final ocupa toda la altura libre. Lo encogemos para hacer
+    // sitio al input + botones que pintamos a continuacion.
+    WizardForm.FinishedLabel.AutoSize := False;
+    WizardForm.FinishedLabel.Height := ScaleY(80);
+    BaseTop := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(8);
+
+    // TNewEdit con la contraseña: read-only, monospaced si Inno lo
+    // permite, seleccionable y copiable.
+    if FinPwdEdit = nil then begin
+      FinPwdEdit := TNewEdit.Create(WizardForm);
+      FinPwdEdit.Parent := WizardForm.FinishedLabel.Parent;
+      FinPwdEdit.Left := WizardForm.FinishedLabel.Left;
+      FinPwdEdit.Width := ScaleX(220);
+      FinPwdEdit.Height := ScaleY(24);
+      FinPwdEdit.ReadOnly := True;
+      FinPwdEdit.Font.Name := 'Consolas';
+      FinPwdEdit.Font.Style := [fsBold];
+    end;
+    FinPwdEdit.Top := BaseTop;
+    FinPwdEdit.Text := AdminPassword;
+
+    if FinPwdCopyBtn = nil then begin
+      FinPwdCopyBtn := TNewButton.Create(WizardForm);
+      FinPwdCopyBtn.Parent := WizardForm.FinishedLabel.Parent;
+      FinPwdCopyBtn.Width := ScaleX(80);
+      FinPwdCopyBtn.Height := ScaleY(25);
+      FinPwdCopyBtn.OnClick := @FinPwdCopyClick;
+    end;
+    FinPwdCopyBtn.Top := BaseTop - ScaleY(1);
+    FinPwdCopyBtn.Left := FinPwdEdit.Left + FinPwdEdit.Width + ScaleX(8);
+    FinPwdCopyBtn.Caption := 'Copiar';
+
+    if FinPwdOpenBtn = nil then begin
+      FinPwdOpenBtn := TNewButton.Create(WizardForm);
+      FinPwdOpenBtn.Parent := WizardForm.FinishedLabel.Parent;
+      FinPwdOpenBtn.Width := ScaleX(110);
+      FinPwdOpenBtn.Height := ScaleY(25);
+      FinPwdOpenBtn.OnClick := @FinPwdOpenFileClick;
+    end;
+    FinPwdOpenBtn.Top := BaseTop - ScaleY(1);
+    FinPwdOpenBtn.Left := FinPwdCopyBtn.Left + FinPwdCopyBtn.Width + ScaleX(8);
+    FinPwdOpenBtn.Caption := 'Abrir archivo';
+
+    // Texto auxiliar bajo el input que explica donde queda guardada.
+    // Reutilizamos el espacio entre el bloque de controles y el final
+    // del label (no movemos otros controles para no romper layout).
+    ;
   end;
 end;
 
