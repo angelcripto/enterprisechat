@@ -45,6 +45,7 @@ artifacts/
 *.tmp_proj
 *.pidb
 *.svclog
+*.lscache
 
 ## Server runtime artefacts (never commit these).
 ## Note: the literal lowercase folder name `data/` was matching the source

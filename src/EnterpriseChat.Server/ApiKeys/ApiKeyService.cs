@@ -202,7 +202,9 @@ public sealed class ApiKeyService
         {
             query = query.Where(k => k.RevokedAt == null);
         }
-        return await query.OrderByDescending(k => k.CreatedAt).ToListAsync(ct);
+        // Id descendente sirve de proxy del orden temporal: SQLite no soporta
+        // ORDER BY DateTimeOffset (mismo motivo que /search en Messages.Id).
+        return await query.OrderByDescending(k => k.Id).ToListAsync(ct);
     }
 
     /// <summary>

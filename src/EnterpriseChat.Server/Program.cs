@@ -1,4 +1,5 @@
 using EnterpriseChat.Licensing.Abstractions;
+using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Auth;
 using EnterpriseChat.Server.Bootstrap;
 using EnterpriseChat.Server.Crypto;
@@ -138,6 +139,7 @@ try
     app.MapSearchEndpoints();
     app.MapFileEndpoints();
     app.MapLicenseAdminEndpoints();
+    app.MapApiKeyAdminEndpoints();
     app.MapEngagementEndpoints();
     app.MapHub<ChatHub>("/hubs/chat");
 
