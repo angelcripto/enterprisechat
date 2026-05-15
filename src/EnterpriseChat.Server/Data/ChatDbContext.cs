@@ -18,6 +18,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
     public DbSet<SavedMessage> SavedMessages => Set<SavedMessage>();
     public DbSet<AuthProviderConfig> AuthProviders => Set<AuthProviderConfig>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -179,6 +180,40 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
                 .WithMany()
                 .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApiKey>(b =>
+        {
+            b.Property(k => k.Role).HasConversion<int>();
+
+            // Lookup primario del middleware: hashea el token recibido
+            // y busca por KeyHash. Único por seguridad — un duplicado
+            // implicaría un bug en el generador.
+            b.HasIndex(k => k.KeyHash).IsUnique();
+
+            // Filtrar "activas" (no revocadas ni caducadas) es la query
+            // más común desde la UI admin.
+            b.HasIndex(k => new { k.RevokedAt, k.ExpiresAt });
+
+            // Si se borra el admin creador, la clave sigue viva sin
+            // atribución (mismo criterio que LicenseRecord.AppliedBy).
+            b.HasOne(k => k.CreatedBy)
+                .WithMany()
+                .HasForeignKey(k => k.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            b.HasOne(k => k.RevokedBy)
+                .WithMany()
+                .HasForeignKey(k => k.RevokedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Self-reference para trazar rotaciones. SetNull evita
+            // cascadas en una cadena larga si alguna vez se hace hard
+            // delete (que no se hace en condiciones normales).
+            b.HasOne(k => k.RotatedFrom)
+                .WithMany()
+                .HasForeignKey(k => k.RotatedFromId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
