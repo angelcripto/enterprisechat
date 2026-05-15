@@ -99,12 +99,6 @@ public sealed class MySqlAuthProvider : IAuthProvider
         string? Email);
 
     /// <summary>
-    /// Devuelve una página de usuarios de la tabla externa. <paramref name="search"/>
-    /// matcha contra username y email (si está mapeado) con LIKE. La paginación
-    /// es OFFSET/LIMIT — para tablas enormes (&gt;100k) habría que pasar a
-    /// keyset por external_id, pero los entornos típicos de PYME aguantan.
-    /// </summary>
-    /// <summary>
     /// Columnas admitidas para <c>ORDER BY</c> al hacer browse. Se
     /// resuelven contra el mapeo del provider antes de quotar — el
     /// cliente envía "username|email|externalId" (lógico), nosotros
@@ -114,7 +108,7 @@ public sealed class MySqlAuthProvider : IAuthProvider
     {
         return (sort?.ToLowerInvariant()) switch
         {
-            "email" when cfg.EmailColumn is not null      => MySqlIdentifier.Quote(cfg.EmailColumn),
+            "email" when cfg.EmailColumn is not null => MySqlIdentifier.Quote(cfg.EmailColumn),
             "externalid" when cfg.ExternalIdColumn is not null => MySqlIdentifier.Quote(cfg.ExternalIdColumn),
             _ => MySqlIdentifier.Quote(cfg.UsernameColumn),
         };
@@ -354,7 +348,7 @@ public sealed class MySqlAuthProvider : IAuthProvider
                 ? username
                 : (reader.IsDBNull(1) ? null : Convert.ToString(reader.GetValue(1)));
             string? fullName = ReadOptional(reader, "full_name");
-            string? email    = ReadOptional(reader, "email");
+            string? email = ReadOptional(reader, "email");
 
             if (string.IsNullOrEmpty(storedHash))
             {
@@ -436,12 +430,12 @@ public sealed class MySqlAuthProvider : IAuthProvider
             MinimumPoolSize = 0,
             SslMode = cfg.TlsMode switch
             {
-                MySqlTlsMode.None       => MySqlSslMode.None,
-                MySqlTlsMode.Preferred  => MySqlSslMode.Preferred,
-                MySqlTlsMode.Required   => MySqlSslMode.Required,
-                MySqlTlsMode.VerifyCa   => MySqlSslMode.VerifyCA,
+                MySqlTlsMode.None => MySqlSslMode.None,
+                MySqlTlsMode.Preferred => MySqlSslMode.Preferred,
+                MySqlTlsMode.Required => MySqlSslMode.Required,
+                MySqlTlsMode.VerifyCa => MySqlSslMode.VerifyCA,
                 MySqlTlsMode.VerifyFull => MySqlSslMode.VerifyFull,
-                _                       => MySqlSslMode.VerifyFull,
+                _ => MySqlSslMode.VerifyFull,
             },
         };
 

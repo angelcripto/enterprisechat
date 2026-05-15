@@ -11,6 +11,13 @@
          and Node.js is not installed on the machine. -->
     <BuildSpa Condition="'$(BuildSpa)' == ''">true</BuildSpa>
     <SpaSourceRoot>$(MSBuildThisFileDirectory)web</SpaSourceRoot>
+
+    <!-- XML doc para que Swashbuckle pinte summaries/remarks de los endpoints
+         en Swagger UI. CS1591 (missing XML comment) se suprime a nivel csproj
+         porque GenerateDocumentationFile lo eleva a warning ANTES de que el
+         .editorconfig lo apague, y TreatWarningsAsErrors lo convertía en error. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,6 +42,7 @@
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
   </ItemGroup>
 
   <!-- Vue SPA build pipeline. EnsureSpaInstalled is idempotent: it skips

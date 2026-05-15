@@ -1,4 +1,5 @@
 using EnterpriseChat.Licensing.Abstractions;
+using EnterpriseChat.Server.ApiDocs;
 using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Auth;
 using EnterpriseChat.Server.Bootstrap;
@@ -98,6 +99,9 @@ try
     builder.Services.AddEnterpriseChatLicensing(builder.Configuration, builder.Environment);
     builder.Services.AddSingleton<ConcurrentSessionCounter>();
 
+    // OpenAPI + Swagger UI público en /docs/api.
+    builder.Services.AddEnterpriseChatSwagger();
+
     var app = builder.Build();
 
     await app.Services.InitializeChatDatabaseAsync();
@@ -117,7 +121,13 @@ try
     // the SPA runs via `npm run dev` on its own port and hits the API via CORS;
     // wwwroot may be empty during that flow, which is fine.
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+
+    // Habilitamos .md como text/markdown para que GET /docs/*.md devuelva
+    // el contenido en lugar de 404 (UseStaticFiles por defecto rechaza
+    // extensiones que no estén en el FileExtensionContentTypeProvider).
+    var staticContentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    staticContentTypes.Mappings[".md"] = "text/markdown; charset=utf-8";
+    app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = staticContentTypes });
 
     if (app.Environment.IsDevelopment())
     {
@@ -142,6 +152,14 @@ try
     app.MapApiKeyAdminEndpoints();
     app.MapEngagementEndpoints();
     app.MapHub<ChatHub>("/hubs/chat");
+
+    // Swagger UI + OpenAPI JSON. Tiene que ir ANTES de MapFallbackToFile
+    // para que el SPA Vue no se trague /docs/api y devuelva index.html.
+    app.UseEnterpriseChatSwagger();
+
+    // Atajo: GET /docs → /docs/api (la landing de Swagger UI).
+    app.MapGet("/docs", () => Results.Redirect("/docs/api/"))
+        .ExcludeFromDescription();
 
     // SPA fallback: anything that didn't match an API route or a real static
     // file is served by index.html so the Vue Router can handle client-side

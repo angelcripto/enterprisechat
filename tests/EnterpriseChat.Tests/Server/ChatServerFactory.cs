@@ -24,6 +24,18 @@ public sealed class ChatServerFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
+        // Por defecto el host de tests apunta a `bin/Debug/net8.0/wwwroot`
+        // del runner, que no existe (el SPA se construye en el csproj del
+        // server). Lo redirigimos al wwwroot real para que UseStaticFiles
+        // pueda servir `index.html`, `docs/*.md`, etc. Si no encontramos
+        // el .sln (test ejecutado desde un layout distinto) caemos al
+        // default sin romper.
+        var serverWwwRoot = ResolveServerWwwRoot();
+        if (serverWwwRoot is not null)
+        {
+            builder.UseWebRoot(serverWwwRoot);
+        }
+
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
@@ -36,6 +48,26 @@ public sealed class ChatServerFactory : WebApplicationFactory<Program>
                 ["EnterpriseChat:Bootstrap:AdminPassword"] = AdminPassword
             });
         });
+    }
+
+    /// <summary>
+    /// Sube desde <c>AppContext.BaseDirectory</c> hasta el directorio que
+    /// contiene <c>EnterpriseChat.sln</c> y devuelve el wwwroot del server.
+    /// Devuelve null si no encuentra la solution (tests fuera del repo).
+    /// </summary>
+    private static string? ResolveServerWwwRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "EnterpriseChat.sln")))
+            {
+                var candidate = Path.Combine(dir.FullName, "src", "EnterpriseChat.Server", "wwwroot");
+                return Directory.Exists(candidate) ? candidate : null;
+            }
+            dir = dir.Parent;
+        }
+        return null;
     }
 
     protected override void Dispose(bool disposing)
