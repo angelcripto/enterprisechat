@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Protocol.Admin;
+using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Auth;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
@@ -14,10 +15,11 @@ internal static class AdminEndpoints
 {
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
-        // Every route under /admin requires the Admin role.
+        // Every route under /admin requires the Admin role — JWT humano o
+        // PAT con rol Admin (policy AdminOnly registrada en AddApiKeyAuthorization).
         var group = app.MapGroup("/admin")
             .WithTags("Admin")
-            .RequireAuthorization(p => p.RequireRole(UserRole.Admin.ToString()));
+            .RequireAuthorization(ApiKeyAuthenticationDefaults.AdminPolicy);
 
         group.MapGet("/users", ListUsersAsync);
         group.MapGet("/users/ids", ListUserIdsAsync);
@@ -64,21 +66,21 @@ internal static class AdminEndpoints
         var ascending = !"desc".Equals(dir, StringComparison.OrdinalIgnoreCase);
         query = (col.ToLowerInvariant(), ascending) switch
         {
-            ("username",    true)  => query.OrderBy(u => u.Username),
-            ("username",    false) => query.OrderByDescending(u => u.Username),
-            ("fullname",    true)  => query.OrderBy(u => u.FullName),
-            ("fullname",    false) => query.OrderByDescending(u => u.FullName),
-            ("email",       true)  => query.OrderBy(u => u.Email),
-            ("email",       false) => query.OrderByDescending(u => u.Email),
-            ("role",        true)  => query.OrderBy(u => u.Role),
-            ("role",        false) => query.OrderByDescending(u => u.Role),
-            ("lastloginat", true)  => query.OrderBy(u => u.LastLoginAt),
+            ("username", true) => query.OrderBy(u => u.Username),
+            ("username", false) => query.OrderByDescending(u => u.Username),
+            ("fullname", true) => query.OrderBy(u => u.FullName),
+            ("fullname", false) => query.OrderByDescending(u => u.FullName),
+            ("email", true) => query.OrderBy(u => u.Email),
+            ("email", false) => query.OrderByDescending(u => u.Email),
+            ("role", true) => query.OrderBy(u => u.Role),
+            ("role", false) => query.OrderByDescending(u => u.Role),
+            ("lastloginat", true) => query.OrderBy(u => u.LastLoginAt),
             ("lastloginat", false) => query.OrderByDescending(u => u.LastLoginAt),
-            ("createdat",   true)  => query.OrderBy(u => u.CreatedAt),
-            ("createdat",   false) => query.OrderByDescending(u => u.CreatedAt),
-            ("isactive",    true)  => query.OrderBy(u => u.IsActive),
-            ("isactive",    false) => query.OrderByDescending(u => u.IsActive),
-            _                       => query.OrderBy(u => u.Username),
+            ("createdat", true) => query.OrderBy(u => u.CreatedAt),
+            ("createdat", false) => query.OrderByDescending(u => u.CreatedAt),
+            ("isactive", true) => query.OrderBy(u => u.IsActive),
+            ("isactive", false) => query.OrderByDescending(u => u.IsActive),
+            _ => query.OrderBy(u => u.Username),
         };
         return query;
     }

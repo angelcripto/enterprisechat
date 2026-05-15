@@ -1,4 +1,5 @@
 using System.Text;
+using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Auth.Hashers;
 using EnterpriseChat.Server.Auth.Providers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -29,14 +30,50 @@ internal static class AuthExtensions
         services.AddSingleton<InternalAuthProvider>();
         services.AddSingleton<AuthProviderRegistry>();
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer();
+        // PAT (API key) handler para que clientes no humanos puedan
+        // autenticarse. Vive junto a JwtBearer en el mismo pipeline; la
+        // policy AdminOnly se registra en AddApiKeyAuthorization para
+        // aceptar JWT humano o PAT con rol Admin.
+        services.AddSingleton<ApiKeyService>();
+        services.AddSingleton(TimeProvider.System);
+
+        // Default = PolicyScheme que mira el header/query y reenvía a JWT
+        // o a ApiKey. Así los endpoints con `RequireAuthorization()` y las
+        // policies con `RequireRole(...)` siguen funcionando sin tener que
+        // enumerar ambos schemes — el router lo hace por ellas.
+        services.AddAuthentication(ApiKeyAuthenticationDefaults.ForwardingScheme)
+            .AddPolicyScheme(ApiKeyAuthenticationDefaults.ForwardingScheme, "JWT or PAT", o =>
+            {
+                o.ForwardDefaultSelector = ctx =>
+                {
+                    var auth = ctx.Request.Headers.Authorization.ToString();
+                    if (auth.StartsWith("Bearer " + ApiKeyAuthenticationDefaults.TokenPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ApiKeyAuthenticationDefaults.Scheme;
+                    }
+
+                    var path = ctx.Request.Path;
+                    if (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/files"))
+                    {
+                        var qs = ctx.Request.Query["api_key"].ToString();
+                        if (qs.StartsWith(ApiKeyAuthenticationDefaults.TokenPrefix, StringComparison.Ordinal))
+                        {
+                            return ApiKeyAuthenticationDefaults.Scheme;
+                        }
+                    }
+
+                    return JwtBearerDefaults.AuthenticationScheme;
+                };
+            })
+            .AddJwtBearer()
+            .AddApiKeyAuth();
 
         // Bind JwtBearerOptions from JwtOptions lazily so test hosts that override
         // configuration via ConfigureAppConfiguration still get picked up.
         services.AddSingleton<IPostConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerFromJwtOptions>();
 
-        services.AddAuthorization();
+        services.AddApiKeyAuthorization();
+        services.AddApiKeyRateLimiting();
         return services;
     }
 

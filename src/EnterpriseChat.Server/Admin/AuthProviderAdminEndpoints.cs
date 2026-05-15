@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Protocol.Admin;
+using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Auth.Hashers;
 using EnterpriseChat.Server.Auth.Providers;
 using EnterpriseChat.Server.Auth.Providers.MySql;
@@ -20,7 +21,7 @@ internal static class AuthProviderAdminEndpoints
     {
         var group = app.MapGroup("/admin/auth-providers")
             .WithTags("AdminAuthProviders")
-            .RequireAuthorization(p => p.RequireRole(UserRole.Admin.ToString()));
+            .RequireAuthorization(ApiKeyAuthenticationDefaults.AdminPolicy);
 
         group.MapGet("/", ListAsync);
         group.MapGet("/{id:int}", GetAsync);
@@ -233,7 +234,7 @@ internal static class AuthProviderAdminEndpoints
                     db.Users.RemoveRange(provisioned);
                 }
                 break;
-            // 'keep': nada que hacer, el SetNull los deja huérfanos.
+                // 'keep': nada que hacer, el SetNull los deja huérfanos.
         }
 
         db.AuthProviders.Remove(row);
@@ -298,8 +299,8 @@ internal static class AuthProviderAdminEndpoints
             return result.Outcome switch
             {
                 AuthOutcome.ProviderError => Results.Ok(new AuthProviderTestResult(false, null, result.FailureDetail)),
-                AuthOutcome.UnknownUser   => Results.Ok(new AuthProviderTestResult(true, false, "Usuario no encontrado en la tabla externa.")),
-                _                          => Results.Ok(new AuthProviderTestResult(true, true, null)),
+                AuthOutcome.UnknownUser => Results.Ok(new AuthProviderTestResult(true, false, "Usuario no encontrado en la tabla externa.")),
+                _ => Results.Ok(new AuthProviderTestResult(true, true, null)),
             };
         }
         catch (Exception ex)

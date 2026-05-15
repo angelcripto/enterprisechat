@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Protocol.Licensing;
+using EnterpriseChat.Server.ApiKeys;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,7 @@ internal static class LicenseAdminEndpoints
     {
         var group = app.MapGroup("/admin/license")
             .WithTags("Licensing")
-            .RequireAuthorization(p => p.RequireRole(UserRole.Admin.ToString()));
+            .RequireAuthorization(ApiKeyAuthenticationDefaults.AdminPolicy);
 
         group.MapPost("/", ApplyAsync);
         group.MapDelete("/", ClearAsync);

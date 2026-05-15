@@ -126,6 +126,8 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
+    app.UseRateLimiter();
+
     app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
     app.MapGet("/license", (ILicenseValidator licensing) => Results.Ok(licensing.Current));
     app.MapAuthEndpoints();

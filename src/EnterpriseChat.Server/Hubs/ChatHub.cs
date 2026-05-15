@@ -4,13 +4,19 @@ using EnterpriseChat.Protocol;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
 using EnterpriseChat.Server.Licensing;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace EnterpriseChat.Server.Hubs;
 
-[Authorize]
+// El hub asume que Context.User representa a un usuario humano con
+// userId numérico; las claves de servicio (PAT) no encajan, así que
+// fijamos el scheme a JWT explícitamente para que un PAT presentado
+// vía ?api_key= reciba 401 en el handshake en lugar de explotar más
+// tarde en GetUserId().
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class ChatHub(
     IDbContextFactory<ChatDbContext> dbFactory,
     ConcurrentSessionCounter sessionCounter,
