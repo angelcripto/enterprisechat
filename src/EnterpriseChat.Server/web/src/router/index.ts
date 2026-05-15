@@ -10,6 +10,7 @@ const AdminAuthProvidersView = () => import("@/views/AdminAuthProvidersView.vue"
 const AdminAuthProviderImportView = () => import("@/views/AdminAuthProviderImportView.vue");
 const AdminUsersView = () => import("@/views/AdminUsersView.vue");
 const AdminChangePasswordView = () => import("@/views/AdminChangePasswordView.vue");
+const AdminApiKeysView = () => import("@/views/AdminApiKeysView.vue");
 
 export const router = createRouter({
     history: createWebHistory(),
@@ -43,6 +44,7 @@ export const router = createRouter({
                 { path: "change-password", name: "admin-change-password", component: AdminChangePasswordView },
                 { path: "auth-providers", name: "admin-auth-providers", component: AdminAuthProvidersView },
                 { path: "auth-providers/:id/import", name: "admin-auth-provider-import", component: AdminAuthProviderImportView, props: true },
+                { path: "api-keys", name: "admin-api-keys", component: AdminApiKeysView },
             ],
         },
         { path: "/:pathMatch(.*)*", redirect: "/" },

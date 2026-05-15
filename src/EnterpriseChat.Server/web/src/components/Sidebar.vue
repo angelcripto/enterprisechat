@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Briefcase, Shield, ShieldCheck, Users, KeyRound, UserPlus, LogOut } from "lucide-vue-next";
+import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Briefcase, Shield, ShieldCheck, Users, KeyRound, UserPlus, LogOut, Code2 } from "lucide-vue-next";
 import { chatHub } from "@/services/signalr";
 import { dialogConfirm } from "@/dialogs";
 import Avatar from "@/components/Avatar.vue";
@@ -215,6 +215,14 @@ async function logout(): Promise<void> {
                                      isActiveName('admin-auth-providers') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                             <ShieldCheck class="w-4 h-4 text-slate-500" />
                             <span class="flex-1 text-left">Autenticación externa</span>
+                        </router-link>
+                    </li>
+                    <li>
+                        <router-link :to="{ name: 'admin-api-keys' }"
+                            :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                     isActiveName('admin-api-keys') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
+                            <Code2 class="w-4 h-4 text-slate-500" />
+                            <span class="flex-1 text-left">API keys</span>
                         </router-link>
                     </li>
                 </ul>
