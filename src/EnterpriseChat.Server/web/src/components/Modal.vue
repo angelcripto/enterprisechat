@@ -10,8 +10,11 @@ import { X } from "lucide-vue-next";
 interface Props {
     title?: string;
     width?: string;
+    // Clases extra para el contenedor del diálogo (borde, anillo, etc.).
+    // Lo usa ConfirmDialog para forzar borde rojo cuando danger:true.
+    surfaceClass?: string;
 }
-const props = withDefaults(defineProps<Props>(), { title: "", width: "440px" });
+const props = withDefaults(defineProps<Props>(), { title: "", width: "440px", surfaceClass: "" });
 const emit = defineEmits<{ (e: "close"): void }>();
 
 function onKey(ev: KeyboardEvent): void {
@@ -36,7 +39,7 @@ void props;
             <div
                 role="dialog"
                 aria-modal="true"
-                class="bg-white rounded-2xl shadow-2xl overflow-hidden w-full"
+                :class="['bg-white rounded-2xl shadow-2xl overflow-hidden w-full', surfaceClass]"
                 :style="{ maxWidth: width }"
             >
                 <header v-if="title" class="flex items-center justify-between px-5 py-4 border-b border-slate-100">

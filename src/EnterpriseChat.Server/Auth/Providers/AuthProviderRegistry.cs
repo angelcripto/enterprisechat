@@ -83,18 +83,23 @@ public sealed class AuthProviderRegistry
         _log.LogInformation("AuthProviderRegistry recargado: {Count} providers activos.", loaded.Count);
     }
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private IAuthProvider? Materialize(AuthProviderConfig row)
     {
         switch (row.Kind)
         {
             case AuthProviderKind.Mysql:
             {
-                var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson)
+                var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
                     ?? throw new InvalidOperationException("ConfigJson de MySQL vacío.");
                 var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
                     ? "{}"
                     : _crypto.DecryptString(row.EncryptedSecretsJson);
-                var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson)
+                var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
                     ?? new MySqlProviderSecrets();
                 var verifier = _verifiers.Get(row.HashAlgorithm);
                 return new MySqlAuthProvider(

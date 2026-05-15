@@ -4,8 +4,12 @@ import { setUnauthorizedHandler } from "@/api/client";
 
 const LoginView = () => import("@/views/LoginView.vue");
 const ChatView = () => import("@/views/ChatView.vue");
+const AdminLayout = () => import("@/views/AdminLayout.vue");
 const AdminLicenseView = () => import("@/views/AdminLicenseView.vue");
 const AdminAuthProvidersView = () => import("@/views/AdminAuthProvidersView.vue");
+const AdminAuthProviderImportView = () => import("@/views/AdminAuthProviderImportView.vue");
+const AdminUsersView = () => import("@/views/AdminUsersView.vue");
+const AdminChangePasswordView = () => import("@/views/AdminChangePasswordView.vue");
 
 export const router = createRouter({
     history: createWebHistory(),
@@ -23,9 +27,24 @@ export const router = createRouter({
         { path: "/drafts", name: "drafts", component: ChatView },
         { path: "/saved", name: "saved", component: ChatView },
         { path: "/teams/:name", name: "team", component: ChatView, props: true },
+        { path: "/directory", name: "directory", component: ChatView },
 
-        { path: "/admin/license", name: "admin-license", component: AdminLicenseView },
-        { path: "/admin/auth-providers", name: "admin-auth-providers", component: AdminAuthProvidersView },
+        {
+            // OJO: el SPA usa /manage/* (NO /admin/*) para que sus rutas
+            // no colisionen con los endpoints REST /admin/* del server.
+            // Si las pusiéramos en /admin/users, F5 sobre esa URL haría
+            // que ASP.NET sirviera el endpoint JSON (que requiere auth)
+            // antes del fallback a index.html → 401 sin token.
+            path: "/manage",
+            component: AdminLayout,
+            children: [
+                { path: "users", name: "admin-users", component: AdminUsersView },
+                { path: "license", name: "admin-license", component: AdminLicenseView },
+                { path: "change-password", name: "admin-change-password", component: AdminChangePasswordView },
+                { path: "auth-providers", name: "admin-auth-providers", component: AdminAuthProvidersView },
+                { path: "auth-providers/:id/import", name: "admin-auth-provider-import", component: AdminAuthProviderImportView, props: true },
+            ],
+        },
         { path: "/:pathMatch(.*)*", redirect: "/" },
     ],
 });

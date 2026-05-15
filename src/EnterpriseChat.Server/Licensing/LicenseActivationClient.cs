@@ -57,12 +57,18 @@ public sealed class LicenseActivationClient(
         catch (Exception ex)
         {
             log.LogWarning(ex, "Activación falló por error de red.");
+            // Error de red NUNCA es terminal: el server entra en grace y
+            // reintenta. Sería desastroso caer a Free anónimo cada vez que
+            // el DNS parpadea o el backend reinicia.
             return new ActivationResponse(
                 Success: false,
                 Error: $"No se pudo contactar con el servidor de licencias: {ex.Message}",
                 Jwt: null, Jti: null, LicensedTo: null, MaxUsers: 0,
                 Features: Array.Empty<string>(), HeartbeatSeconds: 0,
-                Edition: null);
+                Edition: null,
+                Terminal: false,
+                IssuedAt: null,
+                ExpiresAt: null);
         }
 
         var raw = await response.Content.ReadFromJsonAsync<ActivationWire>(cancellationToken: ct);
@@ -72,7 +78,10 @@ public sealed class LicenseActivationClient(
                 Success: false,
                 Error: $"Respuesta no válida del servidor (HTTP {(int)response.StatusCode}).",
                 Jwt: null, Jti: null, LicensedTo: null, MaxUsers: 0,
-                Features: Array.Empty<string>(), HeartbeatSeconds: 0, Edition: null);
+                Features: Array.Empty<string>(), HeartbeatSeconds: 0, Edition: null,
+                Terminal: false,
+                IssuedAt: null,
+                ExpiresAt: null);
         }
 
         return new ActivationResponse(
@@ -84,7 +93,26 @@ public sealed class LicenseActivationClient(
             MaxUsers: raw.MaxUsers,
             Features: raw.Features ?? Array.Empty<string>(),
             HeartbeatSeconds: raw.HeartbeatSeconds > 0 ? raw.HeartbeatSeconds : 1800,
-            Edition: raw.Edition);
+            Edition: raw.Edition,
+            Terminal: raw.Terminal,
+            IssuedAt: ParseIso(raw.IssuedAt),
+            ExpiresAt: ParseIso(raw.ExpiresAt));
+    }
+
+    /// <summary>
+    /// Parsea un timestamp ISO 8601 UTC enviado por el backend. Cadena vacía
+    /// o nula → null. Útil para "Nunca caduca" cuando el backend manda el
+    /// sentinel 9999-01-01: en ese caso devolvemos la fecha tal cual y el
+    /// administrador la traduce a null antes de poblar LicenseInfo.
+    /// </summary>
+    private static DateTimeOffset? ParseIso(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+            out var dt) ? dt : null;
     }
 
     private sealed record ActivationWire(
@@ -96,7 +124,16 @@ public sealed class LicenseActivationClient(
         [property: System.Text.Json.Serialization.JsonPropertyName("max_users")] int MaxUsers,
         string[]? Features,
         [property: System.Text.Json.Serialization.JsonPropertyName("heartbeat_seconds")] int HeartbeatSeconds,
-        string? Edition);
+        string? Edition,
+        // Flag enviado por el backend cuando la denegación es definitiva
+        // (serial inexistente, revocada, caducada, sustituida). El admin
+        // del server lo usa para borrar el estado y caer a Free anónimo
+        // sin entrar en grace.
+        bool Terminal = false,
+        // Fechas REALES de la licencia (no del JWT corto). ExpiresAt puede
+        // venir como 9999-01-01 para Free perpetuas; lo traduce el admin.
+        [property: System.Text.Json.Serialization.JsonPropertyName("issued_at")] string? IssuedAt = null,
+        [property: System.Text.Json.Serialization.JsonPropertyName("expires_at")] string? ExpiresAt = null);
 }
 
 public sealed record ActivationResponse(
@@ -108,4 +145,7 @@ public sealed record ActivationResponse(
     int MaxUsers,
     string[] Features,
     int HeartbeatSeconds,
-    string? Edition);
+    string? Edition,
+    bool Terminal = false,
+    DateTimeOffset? IssuedAt = null,
+    DateTimeOffset? ExpiresAt = null);

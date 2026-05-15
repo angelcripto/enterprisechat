@@ -1,14 +1,9 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
-import { useAuthStore } from "@/stores/auth";
-
-const auth = useAuthStore();
-
-onMounted(() => {
-    auth.restoreFromStorage();
-});
+import DialogHost from "@/components/dialogs/DialogHost.vue";
+// Nota: la sesión se restaura en main.ts ANTES del router, no aquí.
 </script>
 
 <template>
     <RouterView />
+    <DialogHost />
 </template>

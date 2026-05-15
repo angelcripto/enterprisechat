@@ -1,176 +1,96 @@
-using System.Text;
-using System.Text.Json;
 using EnterpriseChat.Server.Crypto;
 
 namespace EnterpriseChat.Server.Bootstrap;
 
 /// <summary>
-/// Garantiza que existe una <c>EnterpriseChat:Crypto:MasterKey</c> antes de
-/// que ningún componente del pipeline intente cifrar credenciales de
-/// proveedores externos. Si la clave falta, se genera 32 bytes aleatorios
-/// y se escriben a <c>appsettings.Production.json</c> en el ContentRoot.
+/// Garantiza que existe una master key de AES-256-GCM antes de que
+/// ningún componente intente cifrar credenciales de proveedores
+/// externos.
 ///
-/// Comportamiento por entorno:
-///   - Production: si falta, se genera y se persiste. El operador no
-///     tiene que hacer nada manualmente.
-///   - Development: si falta, se genera EN MEMORIA pero NO se persiste
-///     (evita ensuciar el repo). El dev tiene que persistirlo a mano si
-///     quiere consistencia entre arranques.
+/// La key se persiste en <c>{ContentRoot}/data/master.key</c> en TODOS
+/// los entornos (Development, Testing, Production). Razones:
+///   - Si la key sólo viviera en memoria, cada reinicio invalidaría
+///     todos los blobs cifrados (caso real visto en dev: el admin
+///     guarda un provider MySQL, reinicia el server y al volver a
+///     entrar a la UI todos los blobs lanzan "computed authentication
+///     tag did not match").
+///   - El fichero queda fuera de <c>appsettings.json</c> para no
+///     mezclarlo con config commiteable. <c>data/</c> ya está
+///     gitignored.
+///   - Permisos: el fichero hereda los del directorio <c>data/</c>,
+///     que debe estar restringido al usuario que corre el server.
+///     En producción Linux + systemd → 0700.
+///
+/// Si la key falta, se genera 32 bytes aleatorios y se escriben.
+/// Rotación manual: borrar el fichero invalida todos los secretos
+/// guardados; el admin tendrá que re-introducir las credenciales de
+/// los providers.
 /// </summary>
 internal static class MasterKeyInitializer
 {
+    public const string DataDirName = "data";
+    public const string KeyFileName = "master.key";
+
     private const string ConfigPath = "EnterpriseChat:Crypto:MasterKey";
 
     public static byte[] EnsureMasterKey(IConfigurationManager config, IHostEnvironment env, ILogger logger)
     {
+        // Si el operador ya definió la key vía configuración (env var,
+        // user-secrets, appsettings) tiene preferencia. Útil para
+        // entornos donde la key se inyecta desde un secret manager.
         var existing = config[ConfigPath];
         if (!string.IsNullOrWhiteSpace(existing))
         {
             return AppCrypto.DecodeKey(existing);
         }
 
-        var newKey = AppCrypto.GenerateBase64Key();
-        logger.LogWarning("EnterpriseChat:Crypto:MasterKey no estaba definida; se ha generado una nueva.");
+        var dataDir = Path.Combine(env.ContentRootPath, DataDirName);
+        var keyPath = Path.Combine(dataDir, KeyFileName);
 
-        if (env.IsProduction())
+        if (File.Exists(keyPath))
         {
-            PersistToProductionSettings(env.ContentRootPath, newKey, logger);
-        }
-        else
-        {
-            logger.LogWarning(
-                "Entorno {Env}: la nueva master key se mantiene SOLO en memoria. " +
-                "Si quieres persistencia entre reinicios, copia este valor a appsettings.{Env}.json:\n  {Key}",
-                env.EnvironmentName, env.EnvironmentName, newKey);
-        }
-
-        // Inyectar en la configuracion en memoria para que cualquier
-        // resolución posterior dentro del mismo proceso vea la clave.
-        config[ConfigPath] = newKey;
-        return AppCrypto.DecodeKey(newKey);
-    }
-
-    private static void PersistToProductionSettings(string contentRoot, string base64Key, ILogger logger)
-    {
-        var path = Path.Combine(contentRoot, "appsettings.Production.json");
-
-        JsonDocument? doc = null;
-        if (File.Exists(path))
-        {
+            var encoded = File.ReadAllText(keyPath).Trim();
             try
             {
-                using var stream = File.OpenRead(path);
-                doc = JsonDocument.Parse(stream);
+                var bytes = AppCrypto.DecodeKey(encoded);
+                config[ConfigPath] = encoded;
+                logger.LogDebug("Master key cargada desde {Path}.", keyPath);
+                return bytes;
             }
-            catch (JsonException ex)
+            catch (ArgumentException ex)
             {
-                // appsettings.Production.json roto: no lo pisamos. Logueamos
-                // el problema en lugar de borrar config del usuario.
-                logger.LogError(ex,
-                    "No se pudo parsear {Path}. La nueva MasterKey queda solo en memoria. " +
-                    "Arregla el JSON y reinicia para persistirla.", path);
-                return;
+                throw new InvalidOperationException(
+                    $"El fichero {keyPath} existe pero no contiene una master key válida. " +
+                    "Bórralo para regenerar (perderás los secretos cifrados anteriores) o restáuralo desde backup.",
+                    ex);
             }
         }
 
-        var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        Directory.CreateDirectory(dataDir);
+        var newKey = AppCrypto.GenerateBase64Key();
+        File.WriteAllText(keyPath, newKey);
+        try
         {
-            writer.WriteStartObject();
-            var hasEnterpriseChat = false;
-
-            if (doc is not null)
+            // Restringir lectura al owner en sistemas POSIX. En Windows
+            // el fichero hereda los ACLs de data/, suficiente con que
+            // sólo el usuario del servicio tenga acceso al directorio.
+            if (!OperatingSystem.IsWindows())
             {
-                foreach (var property in doc.RootElement.EnumerateObject())
-                {
-                    if (property.NameEquals("EnterpriseChat"))
-                    {
-                        hasEnterpriseChat = true;
-                        writer.WritePropertyName("EnterpriseChat");
-                        WriteEnterpriseChatWithCrypto(writer, property.Value, base64Key);
-                    }
-                    else
-                    {
-                        property.WriteTo(writer);
-                    }
-                }
+                File.SetUnixFileMode(keyPath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
-
-            if (!hasEnterpriseChat)
-            {
-                writer.WritePropertyName("EnterpriseChat");
-                writer.WriteStartObject();
-                writer.WritePropertyName("Crypto");
-                writer.WriteStartObject();
-                writer.WriteString("MasterKey", base64Key);
-                writer.WriteEndObject();
-                writer.WriteEndObject();
-            }
-
-            writer.WriteEndObject();
         }
-        doc?.Dispose();
-
-        File.WriteAllBytes(path, buffer.ToArray());
-        logger.LogInformation("MasterKey persistida en {Path}.", path);
-    }
-
-    private static void WriteEnterpriseChatWithCrypto(
-        Utf8JsonWriter writer,
-        JsonElement enterpriseChatNode,
-        string base64Key)
-    {
-        writer.WriteStartObject();
-        var hasCrypto = false;
-
-        foreach (var prop in enterpriseChatNode.EnumerateObject())
+        catch (Exception ex)
         {
-            if (prop.NameEquals("Crypto"))
-            {
-                hasCrypto = true;
-                writer.WritePropertyName("Crypto");
-                WriteCryptoWithMasterKey(writer, prop.Value, base64Key);
-            }
-            else
-            {
-                prop.WriteTo(writer);
-            }
+            logger.LogWarning(ex, "No se pudieron ajustar los permisos de {Path}.", keyPath);
         }
 
-        if (!hasCrypto)
-        {
-            writer.WritePropertyName("Crypto");
-            writer.WriteStartObject();
-            writer.WriteString("MasterKey", base64Key);
-            writer.WriteEndObject();
-        }
+        logger.LogWarning(
+            "Se ha generado una nueva master key en {Path}. " +
+            "Inclúyela en tus backups: si la pierdes, los secretos cifrados de proveedores externos se vuelven irrecuperables.",
+            keyPath);
 
-        writer.WriteEndObject();
-    }
-
-    private static void WriteCryptoWithMasterKey(
-        Utf8JsonWriter writer,
-        JsonElement cryptoNode,
-        string base64Key)
-    {
-        writer.WriteStartObject();
-        var written = false;
-        foreach (var prop in cryptoNode.EnumerateObject())
-        {
-            if (prop.NameEquals("MasterKey"))
-            {
-                writer.WriteString("MasterKey", base64Key);
-                written = true;
-            }
-            else
-            {
-                prop.WriteTo(writer);
-            }
-        }
-        if (!written)
-        {
-            writer.WriteString("MasterKey", base64Key);
-        }
-        writer.WriteEndObject();
+        config[ConfigPath] = newKey;
+        return AppCrypto.DecodeKey(newKey);
     }
 }

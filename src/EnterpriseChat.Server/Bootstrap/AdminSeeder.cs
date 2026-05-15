@@ -10,6 +10,14 @@ internal static class AdminSeeder
     public const string AdminPasswordConfigKey = "EnterpriseChat:Bootstrap:AdminPassword";
     public const string DefaultAdminUsername = "admin";
 
+    /// <summary>
+    /// Usuario sistema que recibe la reasignación de mensajes /
+    /// adjuntos / salas creadas cuando un user se borra en hard. No
+    /// se usa para login (IsActive=false, PasswordHash sentinela) y
+    /// nunca aparece en directorios.
+    /// </summary>
+    public const string DeletedUserUsername = "_deleted";
+
     public static async Task SeedAdminIfEmptyAsync(
         IServiceProvider services,
         IConfiguration config,
@@ -19,8 +27,28 @@ internal static class AdminSeeder
         var factory = services.GetRequiredService<IDbContextFactory<ChatDbContext>>();
         await using var db = await factory.CreateDbContextAsync(ct);
 
-        var anyUser = await db.Users.AnyAsync(ct);
-        if (anyUser)
+        // Seed del usuario sistema _deleted en CADA arranque (es idempotente):
+        // lo necesitamos disponible aunque la BD ya tenga otros usuarios para
+        // poder hacer hard delete.
+        var deletedUser = await db.Users.SingleOrDefaultAsync(u => u.Username == DeletedUserUsername, ct);
+        if (deletedUser is null)
+        {
+            db.Users.Add(new User
+            {
+                Username = DeletedUserUsername,
+                FullName = "Usuario eliminado",
+                Role = UserRole.User,
+                PasswordHash = "(system)",
+                IsActive = false,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Usuario sistema '{Name}' creado para anonimización.", DeletedUserUsername);
+        }
+
+        // Solo el "primer admin" si NO hay otros usuarios humanos.
+        var anyHuman = await db.Users.AnyAsync(u => u.Username != DeletedUserUsername, ct);
+        if (anyHuman)
         {
             return;
         }

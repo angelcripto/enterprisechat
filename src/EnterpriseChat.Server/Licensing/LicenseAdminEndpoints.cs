@@ -63,7 +63,7 @@ internal static class LicenseAdminEndpoints
                     RawToken = request.Serial.Trim(),
                     LicensedTo = info.LicensedTo,
                     MaxUsers = info.MaxConcurrentUsers,
-                    IssuedAt = DateTimeOffset.UtcNow,
+                    IssuedAt = info.IssuedAt ?? DateTimeOffset.UtcNow,
                     ExpiresAt = info.ExpiresAt ?? DateTimeOffset.MaxValue,
                     AppliedAt = DateTimeOffset.UtcNow,
                     AppliedByUserId = TryGetActorId(principal),

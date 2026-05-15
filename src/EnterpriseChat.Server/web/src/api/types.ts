@@ -40,6 +40,7 @@ export interface UserSummary {
     isOnline: boolean;
     hasAvatar: boolean;
     unreadDirectMessages: number;
+    hasDmConversation: boolean;
 }
 
 export interface RoomSummary {
@@ -87,7 +88,10 @@ export interface LicenseInfo {
      *  string form is what the marketing site uses. We accept both. */
     edition: "Free" | "Pro" | 0 | 1;
     maxConcurrentUsers: number;
+    /** ISO 8601 UTC. null = "Nunca caduca" (Free perpetua). */
     expiresAt?: string | null;
+    /** ISO 8601 UTC. Fecha de emisión real de la licencia (no del JWT corto). */
+    issuedAt?: string | null;
     licensedTo?: string | null;
     licenseId?: string | null;
 }

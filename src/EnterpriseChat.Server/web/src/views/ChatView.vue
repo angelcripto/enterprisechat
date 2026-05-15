@@ -16,6 +16,7 @@ import ChatWindow from "@/components/ChatWindow.vue";
 import RightPanel from "@/components/RightPanel.vue";
 import InboxView from "@/views/InboxView.vue";
 import MentionsView from "@/views/MentionsView.vue";
+import UsersDirectoryView from "@/views/UsersDirectoryView.vue";
 import SavedView from "@/views/SavedView.vue";
 import DraftsView from "@/views/DraftsView.vue";
 import TeamView from "@/views/TeamView.vue";
@@ -138,6 +139,7 @@ watch(activeThread, async (key) => {
                 <SavedView v-else-if="centrePane === 'saved'" />
                 <DraftsView v-else-if="centrePane === 'drafts'" />
                 <TeamView v-else-if="centrePane === 'team'" />
+                <UsersDirectoryView v-else-if="centrePane === 'directory'" />
                 <div v-else class="m-auto text-slate-500 text-sm">Selecciona un canal o conversación.</div>
             </template>
         </main>

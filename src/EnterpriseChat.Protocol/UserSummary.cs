@@ -12,4 +12,5 @@ public sealed record UserSummary(
     string Role,
     bool IsOnline,
     bool HasAvatar,
-    int UnreadDirectMessages);
+    int UnreadDirectMessages,
+    bool HasDmConversation = false);

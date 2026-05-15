@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Briefcase, Shield } from "lucide-vue-next";
+import { Hash, Lock, Plus, Inbox, AtSign, FileText, Bookmark, Briefcase, Shield, ShieldCheck, Users, KeyRound, UserPlus, LogOut } from "lucide-vue-next";
+import { chatHub } from "@/services/signalr";
+import { dialogConfirm } from "@/dialogs";
 import Avatar from "@/components/Avatar.vue";
 import WorkspaceMenu from "@/components/WorkspaceMenu.vue";
 import CreateChannelModal from "@/components/CreateChannelModal.vue";
@@ -21,7 +23,13 @@ const drafts = useDraftsStore();
 const route = useRoute();
 const router = useRouter();
 
-const otherUsers = computed(() => users.users.filter((u) => u.id !== auth.userId));
+// Mensajes directos del sidebar: solo conversaciones con al menos un
+// mensaje intercambiado. El directorio completo va en su propia vista
+// (#admin/users para admin, vista directorio para no-admin) y desde
+// allí se inicia un DM nuevo. Evita ruido cuando hay decenas de empleados
+// importados pero solo se chatea con 3 ó 4.
+const otherUsers = computed(() =>
+    users.users.filter((u) => u.id !== auth.userId && u.hasDmConversation));
 const departments = computed(() => {
     const set = new Map<string, number>();
     for (const u of users.users) {
@@ -43,6 +51,14 @@ function isActiveName(name: string): boolean { return route.name === name; }
 
 function onChannelCreated(roomId: number): void {
     navigateRoom(roomId);
+}
+
+async function logout(): Promise<void> {
+    const ok = await dialogConfirm({ title: "¿Cerrar sesión?", confirmText: "Cerrar sesión", icon: "question" });
+    if (!ok) return;
+    await chatHub.stop();
+    auth.clear();
+    await router.replace({ name: "login" });
 }
 </script>
 
@@ -87,6 +103,14 @@ function onChannelCreated(roomId: number): void {
                         <span class="flex-1 text-left">Guardados</span>
                     </router-link>
                 </li>
+                <li>
+                    <router-link :to="{ name: 'directory' }"
+                        :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                 isActiveName('directory') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
+                        <Users class="w-4 h-4 text-slate-500" />
+                        <span class="flex-1 text-left">Directorio</span>
+                    </router-link>
+                </li>
             </ul>
 
             <section data-tour="channels">
@@ -112,6 +136,9 @@ function onChannelCreated(roomId: number): void {
             <section data-tour="dms">
                 <header class="flex items-center justify-between px-2 mb-1.5">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Mensajes directos</span>
+                    <router-link :to="{ name: 'directory' }" class="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100" title="Nuevo DM (abrir directorio)">
+                        <Plus class="w-4 h-4" />
+                    </router-link>
                 </header>
                 <ul class="flex flex-col gap-0.5">
                     <li v-for="u in otherUsers" :key="u.id">
@@ -153,10 +180,53 @@ function onChannelCreated(roomId: number): void {
                 </header>
                 <ul class="flex flex-col gap-0.5">
                     <li>
-                        <router-link :to="{ name: 'admin-license' }" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                        <router-link :to="{ name: 'admin-users' }"
+                            :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                     isActiveName('admin-users') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
+                            <Users class="w-4 h-4 text-slate-500" />
+                            <span class="flex-1 text-left">Usuarios</span>
+                        </router-link>
+                    </li>
+                    <li>
+                        <router-link :to="{ name: 'admin-license' }"
+                            :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                     isActiveName('admin-license') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
                             <Shield class="w-4 h-4 text-slate-500" />
                             <span class="flex-1 text-left">Licencia</span>
                         </router-link>
+                    </li>
+                    <li>
+                        <button type="button" @click="inviteModalOpen = true" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-slate-700 hover:bg-slate-100">
+                            <UserPlus class="w-4 h-4 text-slate-500" />
+                            <span class="flex-1 text-left">Invitar personas</span>
+                        </button>
+                    </li>
+                    <li>
+                        <router-link :to="{ name: 'admin-change-password' }"
+                            :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                     isActiveName('admin-change-password') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
+                            <KeyRound class="w-4 h-4 text-slate-500" />
+                            <span class="flex-1 text-left">Cambiar clave admin</span>
+                        </router-link>
+                    </li>
+                    <li>
+                        <router-link :to="{ name: 'admin-auth-providers' }"
+                            :class="['w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm',
+                                     isActiveName('admin-auth-providers') ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100']">
+                            <ShieldCheck class="w-4 h-4 text-slate-500" />
+                            <span class="flex-1 text-left">Autenticación externa</span>
+                        </router-link>
+                    </li>
+                </ul>
+            </section>
+
+            <section>
+                <ul class="flex flex-col gap-0.5">
+                    <li>
+                        <button type="button" @click="logout" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-red-700 hover:bg-red-50">
+                            <LogOut class="w-4 h-4" />
+                            <span class="flex-1 text-left">Cerrar sesión</span>
+                        </button>
                     </li>
                 </ul>
             </section>

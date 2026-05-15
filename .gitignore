@@ -87,3 +87,6 @@ src/EnterpriseChat.Server/web/dist/
 src/EnterpriseChat.Server/web/.vite/
 src/EnterpriseChat.Server/wwwroot/*
 !src/EnterpriseChat.Server/wwwroot/.gitkeep
+
+## Runtime data del operador: SQLite db, master.key, avatars, attachments, logs.
+src/EnterpriseChat.Server/data/

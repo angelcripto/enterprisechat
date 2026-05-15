@@ -19,7 +19,7 @@ public sealed class FreeLicenseValidatorTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    [InlineData(9)]
+    [InlineData(4)]
     public void Admits_sessions_below_cap(int active)
     {
         var sut = new FreeLicenseValidator();
@@ -31,7 +31,7 @@ public sealed class FreeLicenseValidatorTests
     }
 
     [Theory]
-    [InlineData(10)]
+    [InlineData(5)]
     [InlineData(11)]
     [InlineData(int.MaxValue)]
     public void Rejects_sessions_at_or_above_cap(int active)

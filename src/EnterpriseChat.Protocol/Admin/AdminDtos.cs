@@ -29,6 +29,14 @@ public sealed record AdminUserDetail(
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt);
 
+public sealed record AdminUserListResult(
+    IReadOnlyList<AdminUserDetail> Rows,
+    int Total,
+    int Page,
+    int PageSize);
+
+public sealed record AdminUserIdsResult(IReadOnlyList<int> Ids);
+
 public sealed record DepartmentSummary(int Id, string Name);
 
 public sealed record CreateDepartmentRequest(string Name);

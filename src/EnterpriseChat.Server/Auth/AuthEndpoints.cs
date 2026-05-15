@@ -1,9 +1,11 @@
+using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Protocol;
 using EnterpriseChat.Server.Auth.Providers;
 using EnterpriseChat.Server.Auth.Providers.MySql;
 using EnterpriseChat.Server.Bootstrap;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
+using EnterpriseChat.Server.Licensing;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -24,6 +26,7 @@ internal static class AuthEndpoints
         AuthProviderRegistry providers,
         IPasswordHasher hasher,
         JwtTokenIssuer issuer,
+        ILicenseValidator licensing,
         ILogger<Program> log,
         CancellationToken ct)
     {
@@ -105,7 +108,7 @@ internal static class AuthEndpoints
         await using var db = await dbFactory.CreateDbContextAsync(ct);
 
         // Localizamos / damos de alta la fila local del usuario.
-        var localUser = await ResolveLocalUserAsync(db, winning, winningResult, request.Username, ct);
+        var localUser = await ResolveLocalUserAsync(db, winning, winningResult, request.Username, licensing, log, ct);
         if (localUser is null || !localUser.IsActive)
         {
             await WriteAuditAsync(db, localUser?.Id, "auth.login.failed", request.Username, "inactive_local_user", ct);
@@ -147,6 +150,8 @@ internal static class AuthEndpoints
         IAuthProvider provider,
         AuthResult result,
         string username,
+        ILicenseValidator licensing,
+        ILogger log,
         CancellationToken ct)
     {
         if (provider.Kind == AuthProviderKind.Internal)
@@ -197,6 +202,25 @@ internal static class AuthEndpoints
             return null;
         }
 
+        // Antes de crear comprobamos el cap de la licencia. Si no hay
+        // slot, el login falla con 401 y queda registrado en audit.
+        var cap = await LicenseCap.CheckCanAddAsync(db, licensing, extra: 1, ct);
+        if (!cap.Allowed)
+        {
+            log.LogWarning(
+                "Auto-provisión denegada para {Username}: límite de cuentas ({Active}/{Max}).",
+                username, cap.CurrentActive, cap.Max);
+            db.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = null,
+                Action = "user.autoprovision.denied_license",
+                Target = username,
+                Details = $"provider:{provider.Kind}#{provider.ProviderId} active={cap.CurrentActive} max={cap.Max}",
+            });
+            await db.SaveChangesAsync(ct);
+            return null;
+        }
+
         var newUser = new User
         {
             Username = username,
@@ -237,7 +261,9 @@ internal static class AuthEndpoints
 
         try
         {
-            var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson);
+            var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(
+                row.ConfigJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             return pub?.AutoProvision ?? false;
         }
         catch (JsonException)

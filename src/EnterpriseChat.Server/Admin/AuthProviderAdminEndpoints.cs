@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using EnterpriseChat.Licensing.Abstractions;
 using EnterpriseChat.Protocol.Admin;
 using EnterpriseChat.Server.Auth.Hashers;
 using EnterpriseChat.Server.Auth.Providers;
@@ -7,6 +8,7 @@ using EnterpriseChat.Server.Auth.Providers.MySql;
 using EnterpriseChat.Server.Crypto;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Data.Entities;
+using EnterpriseChat.Server.Licensing;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 
@@ -26,7 +28,19 @@ internal static class AuthProviderAdminEndpoints
         group.MapPut("/{id:int}", UpdateAsync);
         group.MapDelete("/{id:int}", DeleteAsync);
         group.MapPost("/test", TestConnectionAsync);
+        group.MapPost("/introspect", IntrospectAsync);
+        group.MapPost("/{id:int}/introspect", IntrospectExistingAsync);
+        group.MapPost("/{id:int}/browse", BrowseAsync);
+        group.MapPost("/{id:int}/all-ids", AllIdsAsync);
+        group.MapPost("/{id:int}/import", ImportAsync);
     }
+
+    private const int MaxAllExternalIds = 10_000;
+
+    private static readonly HashSet<string> BrowseSortColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "username", "email", "externalId",
+    };
 
     private static async Task<IResult> ListAsync(
         IDbContextFactory<ChatDbContext> dbFactory,
@@ -161,16 +175,66 @@ internal static class AuthProviderAdminEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// Borra el proveedor. El admin elige qué hacer con los usuarios
+    /// locales que ese provider había auto-aprovisionado:
+    ///   - <c>keep</c>: dejarlos activos como cuentas locales huérfanas
+    ///     (FK SetNull). Pueden loguearse si el admin les pone password.
+    ///   - <c>deactivate</c>: SetNull + IsActive=false. Seguro por
+    ///     defecto: ya no pueden entrar aunque tuvieran password local.
+    ///     Reversible.
+    ///   - <c>cascade</c>: borrar las filas locales. Peligroso porque
+    ///     rompe FKs Message.FromUserId (Restrict). Si hay mensajes
+    ///     enviados, el DELETE falla y avisamos al admin.
+    /// </summary>
     private static async Task<IResult> DeleteAsync(
         int id,
+        string? onProvisionedUsers,
         ClaimsPrincipal principal,
         IDbContextFactory<ChatDbContext> dbFactory,
         AuthProviderRegistry registry,
         CancellationToken ct)
     {
+        var mode = onProvisionedUsers?.ToLowerInvariant() ?? "deactivate";
+        if (mode is not "keep" and not "deactivate" and not "cascade")
+        {
+            return Results.BadRequest(new { error = "onProvisionedUsers debe ser 'keep', 'deactivate' o 'cascade'." });
+        }
+
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var row = await db.AuthProviders.SingleOrDefaultAsync(p => p.Id == id, ct);
         if (row is null) return Results.NotFound();
+
+        var provisioned = await db.Users.Where(u => u.SourceProviderId == id).ToListAsync(ct);
+        switch (mode)
+        {
+            case "deactivate":
+                foreach (var u in provisioned)
+                {
+                    u.IsActive = false;
+                    // FK SetNull se aplica automáticamente al borrar el provider.
+                }
+                break;
+            case "cascade":
+                if (provisioned.Count > 0)
+                {
+                    // Comprobamos integridad referencial antes de tirar
+                    // el DELETE — si hay mensajes enviados por estos
+                    // usuarios, SQLite con OnDelete.Restrict los protege.
+                    var ids = provisioned.Select(u => u.Id).ToList();
+                    var hasMessages = await db.Messages.AnyAsync(m => ids.Contains(m.FromUserId), ct);
+                    if (hasMessages)
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "No se pueden borrar los usuarios provisionados: tienen mensajes en el chat. Elige 'desactivar' en su lugar.",
+                        });
+                    }
+                    db.Users.RemoveRange(provisioned);
+                }
+                break;
+            // 'keep': nada que hacer, el SetNull los deja huérfanos.
+        }
 
         db.AuthProviders.Remove(row);
         db.AuditLogs.Add(new AuditLog
@@ -178,7 +242,7 @@ internal static class AuthProviderAdminEndpoints
             ActorUserId = ResolveActorId(principal),
             Action = "auth.provider.delete",
             Target = row.DisplayName,
-            Details = $"kind:{row.Kind}",
+            Details = $"kind:{row.Kind} mode:{mode} provisioned_users:{provisioned.Count}",
         });
         await db.SaveChangesAsync(ct);
         await registry.ReloadAsync(ct);
@@ -244,6 +308,356 @@ internal static class AuthProviderAdminEndpoints
         }
     }
 
+    /// <summary>
+    /// Variante de introspect para el flujo de edición: el admin
+    /// puede haber modificado host/db/table sin tocar las credenciales.
+    /// Si <c>request.Secrets</c> viene vacío o null, descifra los
+    /// secretos guardados del provider <paramref name="id"/> y los
+    /// reutiliza. Si viene con datos, los usa (caso "el admin cambia
+    /// la contraseña a la vez").
+    /// </summary>
+    private static async Task<IResult> IntrospectExistingAsync(
+        int id,
+        AuthProviderIntrospectRequest request,
+        IDbContextFactory<ChatDbContext> dbFactory,
+        AppCrypto crypto,
+        CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var row = await db.AuthProviders.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
+        if (row is null) return Results.NotFound();
+        if (row.Kind != AuthProviderKind.Mysql)
+            return Results.BadRequest(new { error = $"Introspección no soportada para {row.Kind}." });
+
+        try
+        {
+            var pub = DeserializePayload<MySqlProviderPublicConfig>(request.Config)
+                ?? throw new InvalidOperationException("Config vacía.");
+
+            var bodySecrets = DeserializePayload<MySqlProviderSecrets>(request.Secrets);
+            var secrets = (bodySecrets is null || (string.IsNullOrEmpty(bodySecrets.User) && string.IsNullOrEmpty(bodySecrets.Password)))
+                ? DescifrarSecretosGuardados(row, crypto)
+                : bodySecrets;
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(pub.QueryTimeoutSeconds + 3));
+
+            if (string.IsNullOrWhiteSpace(request.Table))
+            {
+                var tables = await MySqlAuthProvider.ListTablesAsync(pub, secrets, cts.Token);
+                return Results.Ok(new AuthProviderIntrospectResult(tables, null));
+            }
+            var columns = await MySqlAuthProvider.ListColumnsAsync(pub, secrets, request.Table, cts.Token);
+            return Results.Ok(new AuthProviderIntrospectResult(null, columns));
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static MySqlProviderSecrets DescifrarSecretosGuardados(AuthProviderConfig row, AppCrypto crypto)
+    {
+        if (string.IsNullOrEmpty(row.EncryptedSecretsJson))
+        {
+            return new MySqlProviderSecrets();
+        }
+        var json = crypto.DecryptString(row.EncryptedSecretsJson);
+        return JsonSerializer.Deserialize<MySqlProviderSecrets>(json, JsonOptions) ?? new MySqlProviderSecrets();
+    }
+
+    /// <summary>
+    /// Lista paginada de los usuarios de la tabla externa, marcando si
+    /// cada uno ya está importado localmente. Permite al admin elegir
+    /// quién entra al chat sin tirar de SQL ni esperar a que cada uno
+    /// haga su primer login.
+    /// </summary>
+    private static async Task<IResult> BrowseAsync(
+        int id,
+        AuthProviderBrowseRequest request,
+        IDbContextFactory<ChatDbContext> dbFactory,
+        AppCrypto crypto,
+        ILicenseValidator licensing,
+        CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var row = await db.AuthProviders.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
+        if (row is null) return Results.NotFound();
+        if (row.Kind != AuthProviderKind.Mysql)
+        {
+            return Results.BadRequest(new { error = $"Browse no soportado para {row.Kind}." });
+        }
+
+        try
+        {
+            var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
+                ?? throw new InvalidOperationException("ConfigJson inválido.");
+            var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
+                ? "{}" : crypto.DecryptString(row.EncryptedSecretsJson);
+            var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
+                ?? new MySqlProviderSecrets();
+
+            if (!string.IsNullOrEmpty(request.Sort) && !BrowseSortColumns.Contains(request.Sort))
+            {
+                return Results.BadRequest(new { error = $"Columna de orden no admitida: {request.Sort}." });
+            }
+            var (rows, total) = await MySqlAuthProvider.BrowseAsync(
+                pub, secrets, request.Search, request.Page, request.PageSize, ct,
+                sort: request.Sort, dir: request.Dir);
+
+            // Marcamos los que ya existen localmente (por externalId).
+            var externalIds = rows.Select(r => r.ExternalId).ToList();
+            var existing = await db.Users
+                .Where(u => u.SourceProviderId == id && u.ExternalId != null && externalIds.Contains(u.ExternalId))
+                .Select(u => u.ExternalId!)
+                .ToListAsync(ct);
+            var existingSet = new HashSet<string>(existing);
+
+            var mapped = rows.Select(r => new AuthProviderBrowseRow(
+                ExternalId: r.ExternalId,
+                Username: r.Username,
+                FullName: r.FullName,
+                Email: r.Email,
+                AlreadyImported: existingSet.Contains(r.ExternalId))).ToList();
+
+            var active = await LicenseCap.CountActiveUsersAsync(db, ct);
+            var max = licensing.Current.MaxConcurrentUsers;
+
+            return Results.Ok(new AuthProviderBrowseResult(
+                Rows: mapped, Total: total, Page: request.Page, PageSize: request.PageSize,
+                LicenseSlotsAvailable: Math.Max(0, max - active),
+                LicenseMaxUsers: max,
+                LicenseActiveUsers: active));
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Devuelve solo los external IDs que matchean el filtro (sin
+    /// paginar). Usado por la UI para "seleccionar todos los del
+    /// filtro" y luego importar. Tope duro 10.000 — si excede, 413
+    /// con detalle y la SPA pide refinar.
+    /// </summary>
+    private static async Task<IResult> AllIdsAsync(
+        int id,
+        AuthProviderAllIdsRequest request,
+        IDbContextFactory<ChatDbContext> dbFactory,
+        AppCrypto crypto,
+        CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var row = await db.AuthProviders.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
+        if (row is null) return Results.NotFound();
+        if (row.Kind != AuthProviderKind.Mysql)
+            return Results.BadRequest(new { error = $"all-ids no soportado para {row.Kind}." });
+        if (!string.IsNullOrEmpty(request.Sort) && !BrowseSortColumns.Contains(request.Sort))
+            return Results.BadRequest(new { error = $"Columna de orden no admitida: {request.Sort}." });
+
+        try
+        {
+            var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
+                ?? throw new InvalidOperationException("ConfigJson inválido.");
+            var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
+                ? "{}" : crypto.DecryptString(row.EncryptedSecretsJson);
+            var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
+                ?? new MySqlProviderSecrets();
+
+            var (ids, total) = await MySqlAuthProvider.ListExternalIdsAsync(
+                pub, secrets, request.Search, MaxAllExternalIds, ct,
+                sort: request.Sort, dir: request.Dir);
+
+            if (total > MaxAllExternalIds)
+            {
+                return Results.Json(
+                    new { error = $"Demasiados resultados ({total}). Refina el filtro: máximo {MaxAllExternalIds}." },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+
+            return Results.Ok(new AuthProviderAllIdsResult(ids));
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Importa en masa una lista de external IDs. Para cada uno:
+    ///   1. Lo busca en la tabla externa para sacar username/email/full_name.
+    ///   2. Comprueba que no existe ya localmente (por external_id ni
+    ///      por colisión de username).
+    ///   3. Comprueba slots de licencia ANTES de crear.
+    ///   4. Inserta con SourceProviderId apuntando al provider y un
+    ///      PasswordHash sentinela ("external") que el verifier interno
+    ///      nunca aceptaría.
+    /// Devuelve cuántos se crearon y por qué se saltaron los demás.
+    /// </summary>
+    private static async Task<IResult> ImportAsync(
+        int id,
+        AuthProviderImportRequest request,
+        ClaimsPrincipal principal,
+        IDbContextFactory<ChatDbContext> dbFactory,
+        AppCrypto crypto,
+        ILicenseValidator licensing,
+        CancellationToken ct)
+    {
+        if (request.ExternalIds is null || request.ExternalIds.Count == 0)
+        {
+            return Results.BadRequest(new { error = "No se han enviado IDs para importar." });
+        }
+        if (request.ExternalIds.Count > 500)
+        {
+            return Results.BadRequest(new { error = "Máximo 500 usuarios por lote de importación." });
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var row = await db.AuthProviders.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, ct);
+        if (row is null) return Results.NotFound();
+        if (row.Kind != AuthProviderKind.Mysql)
+        {
+            return Results.BadRequest(new { error = $"Import no soportado para {row.Kind}." });
+        }
+
+        var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
+            ?? throw new InvalidOperationException("ConfigJson inválido.");
+        var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
+            ? "{}" : crypto.DecryptString(row.EncryptedSecretsJson);
+        var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
+            ?? new MySqlProviderSecrets();
+
+        // Pre-cargamos los locales que ya existen para esos external IDs
+        // para detectar duplicados sin un SELECT por usuario.
+        var requested = new HashSet<string>(request.ExternalIds);
+        var alreadyImported = await db.Users
+            .Where(u => u.SourceProviderId == id && u.ExternalId != null && requested.Contains(u.ExternalId))
+            .Select(u => u.ExternalId!)
+            .ToListAsync(ct);
+        var alreadyImportedSet = new HashSet<string>(alreadyImported);
+
+        // Cap de licencia: cuántos pueden entrar antes de tocar fondo.
+        var capStart = await LicenseCap.CountActiveUsersAsync(db, ct);
+        var max = licensing.Current.MaxConcurrentUsers;
+        var slotsLeft = Math.Max(0, max - capStart);
+
+        var created = 0;
+        var skipped = 0;
+        var reasons = new List<string>();
+        var actorId = ResolveActorId(principal);
+
+        // Una sola SELECT que trae todos los IDs solicitados (WHERE IN).
+        // Mucho más eficiente que iterar y respeta el límite de 500.
+        IReadOnlyList<MySqlAuthProvider.BrowseRow> externalRows;
+        try
+        {
+            externalRows = await MySqlAuthProvider.FetchByExternalIdsAsync(
+                pub, secrets, request.ExternalIds.ToList(), ct);
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = $"Error consultando MySQL: {ex.Message}" });
+        }
+
+        var byExternalId = externalRows.ToDictionary(r => r.ExternalId, StringComparer.Ordinal);
+
+        foreach (var externalId in request.ExternalIds)
+        {
+            if (string.IsNullOrEmpty(externalId))
+            {
+                skipped++; reasons.Add("ID vacío.");
+                continue;
+            }
+            if (alreadyImportedSet.Contains(externalId))
+            {
+                skipped++; reasons.Add($"{externalId}: ya importado.");
+                continue;
+            }
+            if (slotsLeft <= 0)
+            {
+                skipped++; reasons.Add($"{externalId}: sin slots de licencia.");
+                continue;
+            }
+            if (!byExternalId.TryGetValue(externalId, out var match))
+            {
+                skipped++; reasons.Add($"{externalId}: no encontrado en la tabla externa.");
+                continue;
+            }
+            if (await db.Users.AnyAsync(u => u.Username == match.Username, ct))
+            {
+                skipped++; reasons.Add($"{externalId}: choca con usuario local existente '{match.Username}'.");
+                continue;
+            }
+
+            db.Users.Add(new User
+            {
+                Username = match.Username,
+                FullName = string.IsNullOrEmpty(match.FullName) ? match.Username : match.FullName!,
+                Email = match.Email,
+                Role = UserRole.User,
+                PasswordHash = "external",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                SourceProviderId = id,
+                ExternalId = match.ExternalId,
+            });
+            db.AuditLogs.Add(new AuditLog
+            {
+                ActorUserId = actorId,
+                Action = "user.import",
+                Target = match.Username,
+                Details = $"provider:#{id} external_id:{match.ExternalId}",
+            });
+            created++;
+            slotsLeft--;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new AuthProviderImportResult(created, skipped, reasons));
+    }
+
+    /// <summary>
+    /// Devuelve la lista de tablas del MySQL si <c>Table</c> no se pasa,
+    /// o las columnas de la tabla indicada si sí se pasa. Usado por el
+    /// wizard de la SPA para rellenar selects en vez de obligar al admin
+    /// a escribir nombres a mano.
+    /// </summary>
+    private static async Task<IResult> IntrospectAsync(
+        AuthProviderIntrospectRequest request,
+        AppCrypto crypto,
+        CancellationToken ct)
+    {
+        if (!TryParseKind(request.Kind, out var kind, out var error))
+            return Results.BadRequest(new { error });
+        if (kind != AuthProviderKind.Mysql)
+            return Results.BadRequest(new { error = $"Introspección no soportada para {kind} todavía." });
+
+        try
+        {
+            var pub = DeserializePayload<MySqlProviderPublicConfig>(request.Config)
+                ?? throw new InvalidOperationException("Config vacía.");
+            var secrets = DeserializePayload<MySqlProviderSecrets>(request.Secrets)
+                ?? throw new InvalidOperationException("Secrets vacíos.");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(pub.QueryTimeoutSeconds + 3));
+
+            if (string.IsNullOrWhiteSpace(request.Table))
+            {
+                var tables = await MySqlAuthProvider.ListTablesAsync(pub, secrets, cts.Token);
+                return Results.Ok(new AuthProviderIntrospectResult(tables, null));
+            }
+
+            var columns = await MySqlAuthProvider.ListColumnsAsync(pub, secrets, request.Table, cts.Token);
+            return Results.Ok(new AuthProviderIntrospectResult(null, columns));
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
     private static async Task PingAsync(
         MySqlProviderPublicConfig pub,
         MySqlProviderSecrets secrets,
@@ -292,21 +706,38 @@ internal static class AuthProviderAdminEndpoints
         return true;
     }
 
+    /// <summary>
+    /// La SPA manda JSON con propiedades en camelCase ("database",
+    /// "passwordColumn"); las DTOs C# son PascalCase. Sin
+    /// <c>PropertyNameCaseInsensitive</c>, todos los campos llegan vacíos
+    /// y los validadores fallan con "Database obligatoria" aunque el
+    /// admin haya rellenado el formulario.
+    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private static T? DeserializePayload<T>(object? payload)
     {
         if (payload is null) return default;
         if (payload is JsonElement je)
         {
-            return je.Deserialize<T>();
+            return je.Deserialize<T>(JsonOptions);
         }
         var json = JsonSerializer.Serialize(payload);
-        return JsonSerializer.Deserialize<T>(json);
+        return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
     private static string? EncryptIfPresent(AppCrypto crypto, object? secrets)
     {
         if (secrets is null) return null;
-        var json = JsonSerializer.Serialize(secrets);
+        // Normalizamos a camelCase para que el blob descifrado sea
+        // intercambiable con lo que envía la SPA y futuros consumidores.
+        var json = JsonSerializer.Serialize(secrets, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        });
         if (json == "null") return null;
         return crypto.EncryptString(json);
     }

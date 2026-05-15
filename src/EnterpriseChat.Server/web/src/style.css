@@ -37,6 +37,43 @@
     .btn-ghost {
         @apply text-slate-600 hover:bg-slate-100;
     }
+    .btn-danger {
+        @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+    .btn-mobile-row {
+        @apply flex items-center justify-center gap-1.5 flex-1 px-2 py-2 rounded-lg text-xs font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-50;
+    }
+    .btn-mobile-row-danger {
+        @apply border-red-200 text-red-700 hover:bg-red-50 active:bg-red-100;
+    }
+    .icon-btn {
+        @apply inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition;
+    }
+    .icon-btn-danger {
+        @apply text-red-600 hover:bg-red-50 hover:text-red-700;
+    }
+    /* Scrollbar discreto para los contenedores con overflow-x del
+       DataTable. Sin esto, el cromo nativo del browser dibuja una
+       barra gris fea pegada al ancho completo de la tabla. */
+    .scrollbar-thin {
+        scrollbar-width: thin;
+        scrollbar-color: rgb(148 163 184 / 0.4) transparent;
+    }
+    .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.4); border-radius: 9999px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgb(100 116 139 / 0.6); }
+    /* Columna de acciones pegada al borde derecho con sombrita para
+       indicar overflow. Se aplica en .data-actions-sticky tanto al th
+       como al td. */
+    .data-actions-sticky {
+        position: sticky;
+        right: 0;
+        background: white;
+        box-shadow: -8px 0 8px -8px rgb(15 23 42 / 0.08);
+    }
+    tr:hover .data-actions-sticky { background: #f8fafc; }
+    thead .data-actions-sticky { background: #f8fafc; }
     .input {
         @apply w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-100;
     }

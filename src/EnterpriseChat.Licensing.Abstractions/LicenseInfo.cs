@@ -11,7 +11,10 @@ public sealed record LicenseInfo(
     int MaxConcurrentUsers,
     DateTimeOffset? ExpiresAt,
     string? LicensedTo,
-    string? LicenseId);
+    string? LicenseId,
+    // Fecha de emisión REAL de la licencia (la del row en BD del backend),
+    // no la del JWT corto de 1h. Null en Free anónimo (validador local).
+    DateTimeOffset? IssuedAt = null);
 
 public enum LicenseEdition
 {

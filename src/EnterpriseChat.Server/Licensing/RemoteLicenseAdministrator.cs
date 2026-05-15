@@ -18,6 +18,21 @@ public sealed class RemoteLicenseAdministrator(
         if (response is null || !response.Success)
         {
             var error = response?.Error ?? "Sin respuesta del servidor de licencias.";
+
+            // Si el backend marca la denegación como terminal (serial
+            // eliminado/revocado/caducado/sustituido), no tiene sentido
+            // entrar en grace — el server cae a Free anónimo (5 users)
+            // inmediatamente y borra el LicenseRecord persistido para que
+            // tras reinicio no intente reactivar un serial muerto.
+            if (response is { Terminal: true })
+            {
+                state.Clear();
+                log.LogWarning(
+                    "Activación denegada de forma DEFINITIVA: {Error}. Cayendo a Free anónimo.",
+                    error);
+                return new ApplyLicenseResult(false, error, null);
+            }
+
             state.RecordFailure(error);
             log.LogWarning("Activación fallida: {Error}", error);
             return new ApplyLicenseResult(false, error, null);
@@ -31,15 +46,22 @@ public sealed class RemoteLicenseAdministrator(
             ? LicenseEdition.Free
             : LicenseEdition.Pro;
 
+        // El backend devuelve issued_at y expires_at REALES (no del JWT
+        // corto). Para Free perpetuas, expires_at viene como 9999-01-01;
+        // lo traducimos a null para que el SPA muestre "Nunca" en vez de
+        // un año absurdo. Umbral conservador: año 9000 cubre cualquier
+        // valor centinela razonable.
+        DateTimeOffset? expiresAt = response.ExpiresAt is { } ea && ea.Year >= 9000
+            ? null
+            : response.ExpiresAt;
+
         var info = new LicenseInfo(
             Edition: edition,
             MaxConcurrentUsers: response.MaxUsers,
-            // The wire JWT is short-TTL (1h). The DISPLAYED expiry comes from
-            // there until we widen the activation contract to also return the
-            // license's master expires_at. Good enough until then.
-            ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(response.HeartbeatSeconds * 2),
+            ExpiresAt: expiresAt,
             LicensedTo: response.LicensedTo,
-            LicenseId: response.Jti);
+            LicenseId: response.Jti,
+            IssuedAt: response.IssuedAt);
 
         state.ApplySuccess(info, serial, TimeSpan.FromSeconds(response.HeartbeatSeconds));
         log.LogInformation(

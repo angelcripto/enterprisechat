@@ -50,6 +50,287 @@ public sealed class MySqlAuthProvider : IAuthProvider
     public int ProviderId { get; }
     public string DisplayName { get; }
 
+    /// <summary>
+    /// Construye un connection string a partir de la config sin instanciar
+    /// un provider completo. Útil para endpoints de introspección que
+    /// no necesitan SELECT compuesto.
+    /// </summary>
+    public static string BuildConnectionStringFor(MySqlProviderPublicConfig cfg, MySqlProviderSecrets secrets)
+        => BuildConnectionString(cfg, secrets);
+
+    /// <summary>
+    /// Lista las tablas del schema configurado. Para el wizard de la
+    /// SPA: tras "Conectar y descubrir esquema", el admin elige tabla
+    /// de un select rellenado con datos reales.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ListTablesAsync(
+        MySqlProviderPublicConfig cfg,
+        MySqlProviderSecrets secrets,
+        CancellationToken ct)
+    {
+        await using var connection = new MySqlConnection(BuildConnectionString(cfg, secrets));
+        await connection.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        // SHOW TABLES respeta la base de datos del connection string.
+        cmd.CommandText = "SHOW TABLES";
+        cmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+        var tables = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            tables.Add(reader.GetString(0));
+        }
+        return tables;
+    }
+
+    /// <summary>
+    /// Lista las columnas de la tabla indicada. La tabla se valida
+    /// contra <see cref="MySqlIdentifier"/> para evitar SHOW COLUMNS
+    /// con identificadores arbitrarios.
+    /// </summary>
+    /// <summary>
+    /// Fila proyectada al hacer browse de la tabla externa. Se usa para
+    /// mostrar al admin la lista de candidatos al importar usuarios.
+    /// </summary>
+    public sealed record BrowseRow(
+        string ExternalId,
+        string Username,
+        string? FullName,
+        string? Email);
+
+    /// <summary>
+    /// Devuelve una página de usuarios de la tabla externa. <paramref name="search"/>
+    /// matcha contra username y email (si está mapeado) con LIKE. La paginación
+    /// es OFFSET/LIMIT — para tablas enormes (&gt;100k) habría que pasar a
+    /// keyset por external_id, pero los entornos típicos de PYME aguantan.
+    /// </summary>
+    /// <summary>
+    /// Columnas admitidas para <c>ORDER BY</c> al hacer browse. Se
+    /// resuelven contra el mapeo del provider antes de quotar — el
+    /// cliente envía "username|email|externalId" (lógico), nosotros
+    /// resolvemos a la columna real configurada.
+    /// </summary>
+    private static string ResolveBrowseSortColumn(MySqlProviderPublicConfig cfg, string? sort)
+    {
+        return (sort?.ToLowerInvariant()) switch
+        {
+            "email" when cfg.EmailColumn is not null      => MySqlIdentifier.Quote(cfg.EmailColumn),
+            "externalid" when cfg.ExternalIdColumn is not null => MySqlIdentifier.Quote(cfg.ExternalIdColumn),
+            _ => MySqlIdentifier.Quote(cfg.UsernameColumn),
+        };
+    }
+
+    private static string BuildWhereSql(
+        MySqlProviderPublicConfig cfg, string? search, out bool hasSearch, out string usernameCol, out string emailExpr)
+    {
+        usernameCol = MySqlIdentifier.Quote(cfg.UsernameColumn);
+        emailExpr = cfg.EmailColumn is null ? "NULL" : MySqlIdentifier.Quote(cfg.EmailColumn);
+
+        var whereClauses = new List<string>();
+        if (!string.IsNullOrWhiteSpace(cfg.ExtraWhere))
+        {
+            MySqlIdentifier.ValidateExtraWhere(cfg.ExtraWhere);
+            whereClauses.Add($"({cfg.ExtraWhere})");
+        }
+        hasSearch = !string.IsNullOrWhiteSpace(search);
+        if (hasSearch)
+        {
+            var searchExpr = cfg.EmailColumn is null
+                ? $"{usernameCol} LIKE @search"
+                : $"({usernameCol} LIKE @search OR {emailExpr} LIKE @search)";
+            whereClauses.Add(searchExpr);
+        }
+        return whereClauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", whereClauses);
+    }
+
+    public static async Task<(IReadOnlyList<BrowseRow> Rows, int Total)> BrowseAsync(
+        MySqlProviderPublicConfig cfg,
+        MySqlProviderSecrets secrets,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct,
+        string? sort = null,
+        string? dir = null)
+    {
+        if (page < 0) page = 0;
+        if (pageSize <= 0) pageSize = 50;
+        if (pageSize > 500) pageSize = 500;
+
+        var table = MySqlIdentifier.Quote(cfg.Table);
+        var whereSql = BuildWhereSql(cfg, search, out var hasSearch, out var usernameCol, out var emailExpr);
+        var externalIdExpr = cfg.ExternalIdColumn is null
+            ? usernameCol
+            : MySqlIdentifier.Quote(cfg.ExternalIdColumn);
+        var fullNameExpr = cfg.FullNameColumn is null ? "NULL" : MySqlIdentifier.Quote(cfg.FullNameColumn);
+
+        var sortCol = ResolveBrowseSortColumn(cfg, sort);
+        var ascending = !"desc".Equals(dir, StringComparison.OrdinalIgnoreCase);
+
+        await using var connection = new MySqlConnection(BuildConnectionString(cfg, secrets));
+        await connection.OpenAsync(ct);
+
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = $"SELECT COUNT(*) FROM {table}{whereSql}";
+            countCmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+            if (hasSearch) countCmd.Parameters.AddWithValue("@search", $"%{search}%");
+            var totalObj = await countCmd.ExecuteScalarAsync(ct);
+            var total = Convert.ToInt32(totalObj ?? 0);
+
+            var rows = new List<BrowseRow>(Math.Min(pageSize, total));
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText =
+                $"SELECT {externalIdExpr} AS external_id, {usernameCol} AS username, {fullNameExpr} AS full_name, {emailExpr} AS email " +
+                $"FROM {table}{whereSql} ORDER BY {sortCol} {(ascending ? "ASC" : "DESC")} LIMIT @limit OFFSET @offset";
+            cmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+            if (hasSearch) cmd.Parameters.AddWithValue("@search", $"%{search}%");
+            cmd.Parameters.AddWithValue("@limit", pageSize);
+            cmd.Parameters.AddWithValue("@offset", page * pageSize);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                rows.Add(new BrowseRow(
+                    ExternalId: reader.IsDBNull(0) ? "" : Convert.ToString(reader.GetValue(0)) ?? "",
+                    Username: reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    FullName: reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Email: reader.IsDBNull(3) ? null : reader.GetString(3)));
+            }
+            return (rows, total);
+        }
+    }
+
+    /// <summary>
+    /// Devuelve solo los external_id que matchean el filtro. Usado por
+    /// la UI para "seleccionar todos los del filtro" sin paginar.
+    /// </summary>
+    public static async Task<(IReadOnlyList<string> Ids, int Total)> ListExternalIdsAsync(
+        MySqlProviderPublicConfig cfg,
+        MySqlProviderSecrets secrets,
+        string? search,
+        int hardLimit,
+        CancellationToken ct,
+        string? sort = null,
+        string? dir = null)
+    {
+        var table = MySqlIdentifier.Quote(cfg.Table);
+        var whereSql = BuildWhereSql(cfg, search, out var hasSearch, out var usernameCol, out _);
+        var externalIdExpr = cfg.ExternalIdColumn is null
+            ? usernameCol
+            : MySqlIdentifier.Quote(cfg.ExternalIdColumn);
+        var sortCol = ResolveBrowseSortColumn(cfg, sort);
+        var ascending = !"desc".Equals(dir, StringComparison.OrdinalIgnoreCase);
+
+        await using var connection = new MySqlConnection(BuildConnectionString(cfg, secrets));
+        await connection.OpenAsync(ct);
+
+        await using var countCmd = connection.CreateCommand();
+        countCmd.CommandText = $"SELECT COUNT(*) FROM {table}{whereSql}";
+        countCmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+        if (hasSearch) countCmd.Parameters.AddWithValue("@search", $"%{search}%");
+        var total = Convert.ToInt32(await countCmd.ExecuteScalarAsync(ct) ?? 0);
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            $"SELECT {externalIdExpr} FROM {table}{whereSql} " +
+            $"ORDER BY {sortCol} {(ascending ? "ASC" : "DESC")} LIMIT @limit";
+        cmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+        if (hasSearch) cmd.Parameters.AddWithValue("@search", $"%{search}%");
+        cmd.Parameters.AddWithValue("@limit", hardLimit);
+        var ids = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            ids.Add(reader.IsDBNull(0) ? "" : Convert.ToString(reader.GetValue(0)) ?? "");
+        }
+        return (ids, total);
+    }
+
+    /// <summary>
+    /// Recupera filas completas por lista de external IDs. Usado por el
+    /// import bulk: el browse ya devolvió los IDs y queremos los datos
+    /// completos sin hacer un SELECT por usuario.
+    ///
+    /// Si <c>ExternalIdColumn</c> no está mapeado, hace match contra
+    /// <c>UsernameColumn</c> (caso "uso el username como id estable").
+    /// </summary>
+    public static async Task<IReadOnlyList<BrowseRow>> FetchByExternalIdsAsync(
+        MySqlProviderPublicConfig cfg,
+        MySqlProviderSecrets secrets,
+        IReadOnlyList<string> externalIds,
+        CancellationToken ct)
+    {
+        if (externalIds.Count == 0) return Array.Empty<BrowseRow>();
+        if (externalIds.Count > 500)
+            throw new ArgumentException("Máximo 500 ids por consulta.", nameof(externalIds));
+
+        var table = MySqlIdentifier.Quote(cfg.Table);
+        var usernameCol = MySqlIdentifier.Quote(cfg.UsernameColumn);
+        var idCol = cfg.ExternalIdColumn is null
+            ? usernameCol
+            : MySqlIdentifier.Quote(cfg.ExternalIdColumn);
+        var fullNameExpr = cfg.FullNameColumn is null ? "NULL" : MySqlIdentifier.Quote(cfg.FullNameColumn);
+        var emailExpr = cfg.EmailColumn is null ? "NULL" : MySqlIdentifier.Quote(cfg.EmailColumn);
+
+        // Generamos placeholders @p0, @p1... y los rellenamos vía
+        // Parameters.AddWithValue para evitar inyección. MySQL no
+        // soporta arrays nativos en parámetros.
+        var placeholders = string.Join(", ", Enumerable.Range(0, externalIds.Count).Select(i => $"@p{i}"));
+        var whereExtra = string.IsNullOrWhiteSpace(cfg.ExtraWhere) ? "" : $" AND ({cfg.ExtraWhere})";
+        if (!string.IsNullOrWhiteSpace(cfg.ExtraWhere))
+        {
+            MySqlIdentifier.ValidateExtraWhere(cfg.ExtraWhere);
+        }
+
+        var sql =
+            $"SELECT {idCol} AS external_id, {usernameCol} AS username, " +
+            $"{fullNameExpr} AS full_name, {emailExpr} AS email " +
+            $"FROM {table} WHERE {idCol} IN ({placeholders}){whereExtra}";
+
+        await using var connection = new MySqlConnection(BuildConnectionString(cfg, secrets));
+        await connection.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+        for (int i = 0; i < externalIds.Count; i++)
+        {
+            cmd.Parameters.AddWithValue($"@p{i}", externalIds[i]);
+        }
+
+        var rows = new List<BrowseRow>(externalIds.Count);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rows.Add(new BrowseRow(
+                ExternalId: reader.IsDBNull(0) ? "" : Convert.ToString(reader.GetValue(0)) ?? "",
+                Username: reader.IsDBNull(1) ? "" : reader.GetString(1),
+                FullName: reader.IsDBNull(2) ? null : reader.GetString(2),
+                Email: reader.IsDBNull(3) ? null : reader.GetString(3)));
+        }
+        return rows;
+    }
+
+    public static async Task<IReadOnlyList<string>> ListColumnsAsync(
+        MySqlProviderPublicConfig cfg,
+        MySqlProviderSecrets secrets,
+        string table,
+        CancellationToken ct)
+    {
+        var quoted = MySqlIdentifier.Quote(table);
+        await using var connection = new MySqlConnection(BuildConnectionString(cfg, secrets));
+        await connection.OpenAsync(ct);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"SHOW COLUMNS FROM {quoted}";
+        cmd.CommandTimeout = cfg.QueryTimeoutSeconds;
+        var columns = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            columns.Add(reader.GetString(0));
+        }
+        return columns;
+    }
+
     public async Task<AuthResult> VerifyAsync(string username, string password, CancellationToken ct)
     {
         try

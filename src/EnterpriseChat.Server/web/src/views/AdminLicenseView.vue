@@ -26,8 +26,13 @@ const submitting = ref(false);
 const errorMsg = ref<string | null>(null);
 
 const formattedExpires = computed(() => {
-    if (!license.info?.expiresAt) return "Sin expiración";
+    if (!license.info?.expiresAt) return "Nunca";
     return new Date(license.info.expiresAt).toLocaleDateString("es-ES");
+});
+
+const formattedIssued = computed(() => {
+    if (!license.info?.issuedAt) return "—";
+    return new Date(license.info.issuedAt).toLocaleDateString("es-ES");
 });
 
 onMounted(async () => {
@@ -92,7 +97,7 @@ async function removeLicense(): Promise<void> {
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-50 px-6 py-8">
+    <div class="bg-slate-50 px-6 py-8">
         <div class="max-w-3xl mx-auto">
             <button type="button" @click="router.back()" class="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 mb-6">
                 <ArrowLeft class="w-4 h-4" />
@@ -129,7 +134,11 @@ async function removeLicense(): Promise<void> {
                         <div class="text-slate-500 text-xs uppercase tracking-wider mb-1">Licenciada a</div>
                         <div class="text-slate-900">{{ license.info.licensedTo }}</div>
                     </div>
-                    <div v-if="license.info.expiresAt">
+                    <div v-if="license.info.issuedAt">
+                        <div class="text-slate-500 text-xs uppercase tracking-wider mb-1">Emitida</div>
+                        <div class="text-slate-900">{{ formattedIssued }}</div>
+                    </div>
+                    <div>
                         <div class="text-slate-500 text-xs uppercase tracking-wider mb-1">Caduca</div>
                         <div class="text-slate-900">{{ formattedExpires }}</div>
                     </div>

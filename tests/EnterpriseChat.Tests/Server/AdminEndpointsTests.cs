@@ -24,9 +24,9 @@ public sealed class AdminEndpointsTests : IClassFixture<ChatServerFactory>
         var response = await http.GetAsync(new Uri("/admin/users", UriKind.Relative));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var users = await response.Content.ReadFromJsonAsync<List<AdminUserDetail>>();
-        users.Should().NotBeNull();
-        users!.Should().ContainSingle(u => u.Username == "admin");
+        var page = await response.Content.ReadFromJsonAsync<AdminUserListResult>();
+        page.Should().NotBeNull();
+        page!.Rows.Should().ContainSingle(u => u.Username == "admin");
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public sealed class AdminEndpointsTests : IClassFixture<ChatServerFactory>
     {
         var http = await CreateAuthedClientAsAdminAsync();
         var listResp = await http.GetAsync(new Uri("/admin/users", UriKind.Relative));
-        var users = await listResp.Content.ReadFromJsonAsync<List<AdminUserDetail>>();
-        var admin = users!.Single(u => u.Username == "admin");
+        var page = await listResp.Content.ReadFromJsonAsync<AdminUserListResult>();
+        var admin = page!.Rows.Single(u => u.Username == "admin");
 
         var deactivate = await http.DeleteAsync(new Uri($"/admin/users/{admin.Id}", UriKind.Relative));
 

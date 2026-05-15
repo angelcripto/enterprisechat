@@ -73,6 +73,18 @@ internal static class UserEndpoints
                 .Select(g => new { PeerId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.PeerId, x => x.Count, ct);
 
+        // Peers con los que el usuario actual ha intercambiado algún DM.
+        // El sidebar usa esto para mostrar solo conversaciones reales en
+        // "Mensajes directos" en lugar de todo el directorio.
+        var dmPeers = meId is null
+            ? new HashSet<int>()
+            : new HashSet<int>(await db.Messages
+                .Where(m => (m.FromUserId == meId && m.ToUserId != null)
+                         || (m.ToUserId == meId && m.FromUserId != meId))
+                .Select(m => m.FromUserId == meId ? m.ToUserId!.Value : m.FromUserId)
+                .Distinct()
+                .ToListAsync(ct));
+
         // Include self so the SPA can render the current user's avatar.
         var result = users
             .Select(u => new UserSummary(
@@ -83,7 +95,8 @@ internal static class UserEndpoints
                 Role: u.Role,
                 IsOnline: sessions.IsOnline(u.Id) || u.Id == meId,
                 HasAvatar: u.HasAvatar,
-                UnreadDirectMessages: unreadByPeer.TryGetValue(u.Id, out var cnt) ? cnt : 0))
+                UnreadDirectMessages: unreadByPeer.TryGetValue(u.Id, out var cnt) ? cnt : 0,
+                HasDmConversation: dmPeers.Contains(u.Id)))
             .ToArray();
 
         return Results.Ok(result);
