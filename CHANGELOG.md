@@ -11,6 +11,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **API pública con claves rotables (PAT)** para que developers externos construyan su propio cliente. Decisión documentada en [ADR-0005](docs/adr/0005-api-publica-con-claves-rotables.md).
+  - Entidad `ApiKey` + migración `AddApiKeys`. Sólo se persiste `SHA-256(token)`; el plaintext (`ec_pat_<base64url>`) se entrega una única vez al crear/rotar.
+  - `ApiKeyService` (emitir/rotar/revocar/listar/resolver) con audit log automático y throttle de `LastUsedAt` (1 min) para no martillear BD desde bots.
+  - `ApiKeyAuthenticationHandler` + `PolicyScheme` default `JwtOrApiKey`: mira el header/query y reenvía a JwtBearer o a ApiKey, así las policies con `RequireRole` siguen funcionando sin enumerar schemes (elude un bug de ASP.NET Core 8). Acepta `Authorization: Bearer ec_pat_…` y `?api_key=…` en `/files` y `/hubs`.
+  - Las PAT son **tokens de servicio**, no impersonan a un humano: `sub` sintético `apikey:<id>`, rol `User`/`Admin`. El hub SignalR las rechaza en el handshake (fija scheme JwtBearer) porque depende de un userId numérico.
+  - Endpoints REST admin `POST/GET/DELETE /admin/api-keys[/{id}[/rotate|revoke]]` bajo policy `AdminOnly`.
+  - **Rate limit** global de 60 req/min por PAT (`Microsoft.AspNetCore.RateLimiting`, bucket fijo particionado por `jti`); el JWT humano no se limita. Rechazo con `429` + `Retry-After: 60`.
+  - UI Vue en `/manage/api-keys` (única superficie admin): tabla con estado, modal de creación, modal del secreto visible una sola vez con botón copiar, rotar y revocar con motivo.
+  - **Documentación pública** sin auth: Swagger UI en `/docs/api`, OpenAPI 3.0 en `/docs/openapi/v1.json`, redirect `/docs → /docs/api/`, y markdowns narrativos servidos en `/docs/{getting-started,authentication,signalr-hub,errors}.md` (`.md` mapeado a `text/markdown`).
+  - 30 smoke tests E2E nuevos (persistencia, servicio, auth, CRUD, rate limit, pipeline, docs).
 - **Startup banner del servidor** vía Spectre.Console: panel con borde cyan que muestra modo, edición activa (FREE/PRO con color), nombre licenciado, días hasta expiración, URL de escucha y endpoints.
 - **Detección amigable de puerto ocupado**: pre-bind con `TcpListener` en `IPAddress.Any` antes de que Kestrel arranque. Si choca renderiza panel rojo "❌ Puerto ocupado" con comandos `netstat` / `ss` para diagnosticarlo y sugerencia para cambiar `Kestrel.Endpoints.Http.Url`. Espera tecla antes de cerrar cuando es interactivo. Catch de fallback recursivo en `InnerException` chain para capturar el error si Kestrel lo lanza después del pre-check (race condition).
 
