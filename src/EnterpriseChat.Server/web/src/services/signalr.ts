@@ -19,6 +19,7 @@ export type ChatHubEventMap = {
     OnRoomMembershipChanged: (roomId: number, userId: number, joined: boolean) => void;
     OnMessageRead: (serverId: number, byUserId: number, readAt: string) => void;
     OnTyping: (fromUserId: number, toUserId: number | null, roomId: number | null) => void;
+    OnTypingStopped: (fromUserId: number, toUserId: number | null, roomId: number | null) => void;
     OnLicenseDenied: (reason: string) => void;
     OnReactionChanged: (messageId: number, userId: number, emoji: string, added: boolean) => void;
     OnPinnedChanged: (roomId: number, messageId: number, pinned: boolean) => void;
@@ -104,6 +105,10 @@ class ChatHubService {
 
     typing(toUserId: number | null, roomId: number | null): Promise<void> {
         return this.invoke<void>("Typing", toUserId, roomId);
+    }
+
+    typingStopped(toUserId: number | null, roomId: number | null): Promise<void> {
+        return this.invoke<void>("TypingStopped", toUserId, roomId);
     }
 
     private invoke<T>(method: string, ...args: unknown[]): Promise<T> {

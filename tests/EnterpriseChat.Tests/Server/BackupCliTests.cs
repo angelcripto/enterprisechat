@@ -286,8 +286,14 @@ public sealed class BackupCliTests : IDisposable
         // Crear una BD SQLite real con una tabla y una fila para que VACUUM INTO
         // tenga algo que copiar. No usa el schema EF Core real porque los tests
         // no aplican migraciones (RunRestoreAsync con applyMigrations:false).
+        // Pooling=False: sin esto, Microsoft.Data.Sqlite devuelve la conexión al
+        // pool al cerrarla y mantiene abierto el handle del fichero durante todo
+        // el proceso de test. RunRestoreAsync borra chat.db para reemplazarlo y
+        // fallaría con "el proceso no puede acceder al archivo". En un servidor
+        // real no ocurre (el restore exige el servicio parado), es un artefacto
+        // de crear la BD dentro del mismo proceso que la restaura.
         var dbPath = Path.Combine(dataDir, "chat.db");
-        using (var conn = new SqliteConnection($"Data Source={dbPath}"))
+        using (var conn = new SqliteConnection($"Data Source={dbPath};Pooling=False"))
         {
             conn.Open();
             using var cmd = conn.CreateCommand();

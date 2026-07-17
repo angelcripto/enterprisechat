@@ -97,8 +97,8 @@ internal static class AuthEndpoints
             var detail = lastFailure?.Outcome switch
             {
                 AuthOutcome.ProviderError => $"provider_error:{lastFailure.FailureDetail}",
-                AuthOutcome.BadPassword   => "bad_password",
-                _                          => "unknown_user",
+                AuthOutcome.BadPassword => "bad_password",
+                _ => "unknown_user",
             };
             await WriteAuditAsync(dbFail, failedUser?.Id, "auth.login.failed", request.Username, detail, ct);
             log.LogInformation("Login fallido ({Detail}): {Username}", detail, request.Username);

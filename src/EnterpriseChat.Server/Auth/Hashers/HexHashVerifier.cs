@@ -20,8 +20,8 @@ public sealed class HexHashVerifier : IPasswordHashVerifier
         _expectedHexLength = expectedHexLength;
     }
 
-    public static HexHashVerifier Md5    => new(HashAlgorithmName.MD5,    32);
-    public static HexHashVerifier Sha1   => new(HashAlgorithmName.SHA1,   40);
+    public static HexHashVerifier Md5 => new(HashAlgorithmName.MD5, 32);
+    public static HexHashVerifier Sha1 => new(HashAlgorithmName.SHA1, 40);
     public static HexHashVerifier Sha256 => new(HashAlgorithmName.SHA256, 64);
 
     public bool Verify(string plaintext, string stored)

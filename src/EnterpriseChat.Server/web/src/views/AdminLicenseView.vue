@@ -37,7 +37,7 @@ const formattedIssued = computed(() => {
 
 onMounted(async () => {
     if (!auth.isAdmin) {
-        await router.replace({ name: "home" });
+        await router.replace({ name: "inbox" });
         return;
     }
     try { await license.load(); } catch { /* ignore */ }

@@ -448,6 +448,10 @@ public sealed class ChatHub(
         }
     }
 
+    /// <summary>
+    /// Avisa de que el usuario ha empezado / sigue escribiendo. El emisor lo
+    /// repite con throttle; el receptor lo oculta solo tras ~3,5s de silencio.
+    /// </summary>
     public async Task Typing(int? toUserId, int? roomId)
     {
         var meId = GetUserId() ?? throw new HubException("Sesión sin identidad.");
@@ -464,6 +468,39 @@ public sealed class ChatHub(
         {
             await Clients.GroupExcept(RoomGroupName(rid), Context.ConnectionId)
                 .OnTyping(meId, null, rid);
+        }
+    }
+
+    /// <summary>
+    /// Avisa de que el usuario ha DEJADO de escribir (envió el mensaje o vació el
+    /// cuadro), para retirar el indicador al instante en vez de esperar a que
+    /// expire el temporizador del receptor.
+    ///
+    /// Va como método y callback SEPARADOS en lugar de añadir un `bool isTyping`
+    /// a <see cref="Typing"/> / <c>OnTyping</c>: el cliente WPF registra
+    /// <c>On&lt;int, int?, int?&gt;(nameof(IChatClient.OnTyping), …)</c>, de 3
+    /// argumentos. Si el servidor empezara a mandar 4, SignalR no rompería la
+    /// compilación — fallaría al enlazar los argumentos en EJECUCIÓN
+    /// ("provides 4 argument(s) but target expects 3"), que es peor porque pasa
+    /// en silencio. Un callback nuevo que el WPF no registra simplemente se
+    /// ignora, igual que ya ocurre con OnPinnedChanged y OnReactionChanged.
+    /// </summary>
+    public async Task TypingStopped(int? toUserId, int? roomId)
+    {
+        var meId = GetUserId() ?? throw new HubException("Sesión sin identidad.");
+        if (toUserId is null && roomId is null)
+        {
+            return;
+        }
+        if (toUserId is int peerId)
+        {
+            await Clients.User(peerId.ToString(CultureInfo.InvariantCulture))
+                .OnTypingStopped(meId, peerId, null);
+        }
+        else if (roomId is int rid)
+        {
+            await Clients.GroupExcept(RoomGroupName(rid), Context.ConnectionId)
+                .OnTypingStopped(meId, null, rid);
         }
     }
 

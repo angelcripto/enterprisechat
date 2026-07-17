@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vue-tsc *)",
+      "Bash(echo \"===== EXIT REAL: $? =====\")",
+      "Bash(dotnet format *)",
+      "Bash(grep -oE '[A-Za-z]:\\\\\\\\[^\\(]*\\\\.cs')",
+      "Bash(sed 's|.*enterprisechat\\\\\\\\||' /tmp/fmtfiles.txt)",
+      "Bash(grep -oE '[A-Za-z]:\\\\\\\\\\\\\\\\[^ ]*\\\\.cs')",
+      "Read(//tmp/**)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(export ASPNETCORE_ENVIRONMENT=Development)",
+      "Bash(dotnet run *)",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -State Listen -LocalPort 5080 -ErrorAction SilentlyContinue | Select-Object -First 1 LocalPort, OwningProcess\")",
+      "Bash(powershell -NoProfile -Command 'Get-NetTCPConnection -State Listen -LocalPort 5080 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }')",
+      "Bash(nohup dotnet run --project src/EnterpriseChat.Server --no-launch-profile --no-build -p:BuildSpa=false -- --no-interactive)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5080/healthz)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5080/favicon.svg)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5080/)"
+    ]
+  }
+}

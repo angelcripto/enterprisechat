@@ -40,14 +40,14 @@ public sealed class WindowsServiceClient
             using var sc = new ServiceController(ServiceName);
             return sc.Status switch
             {
-                ServiceControllerStatus.Running        => ServiceStatus.Running,
-                ServiceControllerStatus.Stopped        => ServiceStatus.Stopped,
-                ServiceControllerStatus.StartPending   => ServiceStatus.Starting,
-                ServiceControllerStatus.StopPending    => ServiceStatus.Stopping,
+                ServiceControllerStatus.Running => ServiceStatus.Running,
+                ServiceControllerStatus.Stopped => ServiceStatus.Stopped,
+                ServiceControllerStatus.StartPending => ServiceStatus.Starting,
+                ServiceControllerStatus.StopPending => ServiceStatus.Stopping,
                 ServiceControllerStatus.ContinuePending or
                 ServiceControllerStatus.PausePending or
-                ServiceControllerStatus.Paused         => ServiceStatus.Pending,
-                _                                      => ServiceStatus.Unknown,
+                ServiceControllerStatus.Paused => ServiceStatus.Pending,
+                _ => ServiceStatus.Unknown,
             };
         }
         catch (InvalidOperationException)

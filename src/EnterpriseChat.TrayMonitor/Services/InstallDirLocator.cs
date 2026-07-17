@@ -38,9 +38,9 @@ public static class InstallDirLocator
         candidates.Add(Path.GetFullPath(Path.Combine(trayBaseDir, "..")));
 
         // Rutas conocidas en Windows.
-        var pf  = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var pfx = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        if (!string.IsNullOrEmpty(pf))  candidates.Add(Path.Combine(pf,  "EnterpriseChat"));
+        if (!string.IsNullOrEmpty(pf)) candidates.Add(Path.Combine(pf, "EnterpriseChat"));
         if (!string.IsNullOrEmpty(pfx)) candidates.Add(Path.Combine(pfx, "EnterpriseChat"));
 
         foreach (var dir in candidates)

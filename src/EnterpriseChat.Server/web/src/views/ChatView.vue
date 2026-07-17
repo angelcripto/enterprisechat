@@ -64,7 +64,8 @@ function handleMessageReceived(m: ChatMessage): void {
 }
 function handlePresence(userId: number, isOnline: boolean): void { users.applyPresence(userId, isOnline); }
 function handleMessageRead(serverId: number, byUserId: number): void { messages.applyMessageRead(serverId, byUserId); }
-function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId); }
+function handleTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId, true); }
+function handleTypingStopped(fromUserId: number, toUserId: number | null, roomId: number | null): void { messages.applyTyping(fromUserId, toUserId, roomId, false); }
 function handleLicenseDenied(reason: string): void { connectError.value = `Conexión rechazada por licencia: ${reason}`; }
 function handleRoomMembership(_roomId: number, _userId: number, _joined: boolean): void { void rooms.load(); }
 function handleReactionChanged(messageId: number, _userId: number, _emoji: string, _added: boolean): void {
@@ -85,6 +86,7 @@ onMounted(async () => {
         chatHub.on("OnPresenceChanged", handlePresence);
         chatHub.on("OnMessageRead", handleMessageRead);
         chatHub.on("OnTyping", handleTyping);
+        chatHub.on("OnTypingStopped", handleTypingStopped);
         chatHub.on("OnLicenseDenied", handleLicenseDenied);
         chatHub.on("OnRoomMembershipChanged", handleRoomMembership);
         chatHub.on("OnReactionChanged", handleReactionChanged);
@@ -106,6 +108,7 @@ onBeforeUnmount(async () => {
     chatHub.off("OnPresenceChanged", handlePresence);
     chatHub.off("OnMessageRead", handleMessageRead);
     chatHub.off("OnTyping", handleTyping);
+    chatHub.off("OnTypingStopped", handleTypingStopped);
     chatHub.off("OnLicenseDenied", handleLicenseDenied);
     chatHub.off("OnRoomMembershipChanged", handleRoomMembership);
     chatHub.off("OnReactionChanged", handleReactionChanged);
@@ -124,10 +127,13 @@ watch(activeThread, async (key) => {
 </script>
 
 <template>
-    <div class="h-screen grid grid-cols-[260px_minmax(0,1fr)_320px] grid-rows-[56px_1fr] bg-slate-50">
-        <TopBar class="col-span-3 row-start-1 border-b border-slate-200" />
-        <Sidebar class="row-start-2 border-r border-slate-200 overflow-hidden" />
-        <main class="row-start-2 overflow-hidden flex flex-col">
+    <!-- Mismas columnas por breakpoint que AdminLayout: el panel derecho (320px)
+         desaparece por debajo de `lg` y la barra izquierda (260px) por debajo de
+         `md`, en vez de reservar 580px fijos y recortar la conversación. -->
+    <div class="h-screen grid grid-cols-[minmax(0,1fr)] md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)_320px] grid-rows-[56px_1fr] bg-slate-50 overflow-hidden">
+        <TopBar class="col-span-full row-start-1 border-b border-slate-200" />
+        <Sidebar class="hidden md:flex row-start-2 border-r border-slate-200 overflow-hidden" />
+        <main class="row-start-2 col-start-1 md:col-start-2 min-w-0 min-h-0 overflow-hidden flex flex-col">
             <div v-if="connecting" class="m-auto text-slate-500 text-sm">Conectando con el servidor…</div>
             <div v-else-if="connectError" class="m-auto max-w-md text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm">
                 {{ connectError }}
@@ -143,6 +149,6 @@ watch(activeThread, async (key) => {
                 <div v-else class="m-auto text-slate-500 text-sm">Selecciona un canal o conversación.</div>
             </template>
         </main>
-        <RightPanel class="row-start-2 border-l border-slate-200 overflow-hidden" :thread="activeThread" />
+        <RightPanel class="hidden lg:flex row-start-2 col-start-3 border-l border-slate-200 overflow-hidden" :thread="activeThread" />
     </div>
 </template>

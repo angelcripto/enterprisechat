@@ -26,7 +26,7 @@ public class HashVerifierTests
     }
 
     [Theory]
-    [InlineData("admin",    "21232f297a57a5a743894a0e4a801fc3")] // md5
+    [InlineData("admin", "21232f297a57a5a743894a0e4a801fc3")] // md5
     public void Md5_accepts_known_hash(string plaintext, string hash)
     {
         HexHashVerifier.Md5.Verify(plaintext, hash).Should().BeTrue();

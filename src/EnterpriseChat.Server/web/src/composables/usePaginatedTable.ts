@@ -65,7 +65,11 @@ export function usePaginatedTable<TRow, TRowKey extends number | string = number
     const lastError = ref<string | null>(null);
 
     // Selección cross-page guardada en un Set para O(1) lookup.
-    const selected = reactive<Set<TRowKey>>(new Set<TRowKey>());
+    // `reactive()` reescribe los tipos que envuelve (UnwrapRefSimple). Con TRowKey aún sin
+    // resolver, TypeScript no puede probar que TRowKey sea asignable a su propia versión
+    // desenvuelta, y falla en cada .add()/.has()/.delete(). El cast conserva la
+    // reactividad real del Set y devuelve el tipo que espera el resto del código.
+    const selected = reactive(new Set<TRowKey>()) as Set<TRowKey>;
     const selectionMode = ref<SelectionMode>("none");
 
     const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));

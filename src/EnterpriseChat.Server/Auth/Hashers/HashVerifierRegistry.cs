@@ -14,13 +14,13 @@ public sealed class HashVerifierRegistry
     {
         _map = new Dictionary<HashAlgorithm, IPasswordHashVerifier>
         {
-            [HashAlgorithm.Bcrypt]       = new BcryptVerifier(),
-            [HashAlgorithm.Argon2id]     = new Argon2idVerifier(),
+            [HashAlgorithm.Bcrypt] = new BcryptVerifier(),
+            [HashAlgorithm.Argon2id] = new Argon2idVerifier(),
             [HashAlgorithm.Sha256Salted] = new Sha256SaltedVerifier(),
-            [HashAlgorithm.Sha256]       = HexHashVerifier.Sha256,
-            [HashAlgorithm.Sha1]         = HexHashVerifier.Sha1,
-            [HashAlgorithm.Md5]          = HexHashVerifier.Md5,
-            [HashAlgorithm.Plaintext]    = new PlaintextVerifier(),
+            [HashAlgorithm.Sha256] = HexHashVerifier.Sha256,
+            [HashAlgorithm.Sha1] = HexHashVerifier.Sha1,
+            [HashAlgorithm.Md5] = HexHashVerifier.Md5,
+            [HashAlgorithm.Plaintext] = new PlaintextVerifier(),
         };
     }
 

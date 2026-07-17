@@ -4,6 +4,7 @@ using System.Text.Json;
 using EnterpriseChat.Server.Data;
 using EnterpriseChat.Server.Files;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace EnterpriseChat.Server.Bootstrap;
 
@@ -118,11 +119,19 @@ internal static class BackupCli
             //    operación a nivel de motor y produce un fichero limpio sin
             //    -wal / -shm asociados.
             var stagedDb = Path.Combine(staging, ChatDbEntry);
+            // Pooling=false es obligatorio aquí, no una optimización: por defecto
+            // Microsoft.Data.Sqlite devuelve la conexión al pool al cerrarla y
+            // MANTIENE ABIERTO el handle del fichero. El restore hace primero un
+            // backup de seguridad (esta misma función) y acto seguido borra
+            // chat.db para reemplazarlo — con el handle en el pool, ese borrado
+            // falla con "el proceso no puede acceder al archivo". Un backup es una
+            // operación de un solo uso: el pool no aporta nada y sí estorba.
             var connStr = new SqliteConnectionStringBuilder
             {
                 DataSource = dbPath,
                 Mode = SqliteOpenMode.ReadOnly,
-                Cache = SqliteCacheMode.Shared
+                Cache = SqliteCacheMode.Shared,
+                Pooling = false
             }.ConnectionString;
             await using (var conn = new SqliteConnection(connStr))
             {
@@ -348,25 +357,33 @@ internal static class BackupCli
                 }
             }
 
-            // Aplicar migraciones por si la BD restaurada es de un servidor
-            // más antiguo. Se hace cambiando temporalmente el CWD para que
-            // PersistenceExtensions resuelva la connection string relativa
-            // (Data Source=data/chat.db) contra el contentRoot correcto.
+            // Aplicar migraciones por si la BD restaurada es de un servidor más
+            // antiguo. El DbContext se construye a mano contra la ruta ABSOLUTA
+            // en vez de levantar un WebApplication. Las dos cosas importan:
+            //
+            //  (a) Levantar un WebApplication obligaba a mover el CurrentDirectory
+            //      del proceso entero para que la connection string relativa de
+            //      appsettings (Data Source=data/chat.db) resolviera bien. Con una
+            //      ruta absoluta no hace falta tocar estado global del proceso.
+            //  (b) Un WebApplication aquí colisiona con WebApplicationFactory
+            //      cuando el restore corre dentro de la suite de tests: ambos
+            //      interceptan la construcción del host en el mismo proceso, y el
+            //      que pierde se queda sin arrancar ("The server has not been
+            //      started or no web application was configured").
+            //
+            // Para migrar sólo hace falta el DbContext, así que no se pierde nada.
             if (applyMigrations)
             {
-                var previousCwd = Directory.GetCurrentDirectory();
-                try
-                {
-                    Directory.SetCurrentDirectory(contentRoot);
-                    var migrationBuilder = WebApplication.CreateBuilder(Array.Empty<string>());
-                    migrationBuilder.Services.AddChatPersistence(migrationBuilder.Configuration);
-                    await using var migApp = migrationBuilder.Build();
-                    await migApp.Services.InitializeChatDatabaseAsync();
-                }
-                finally
-                {
-                    Directory.SetCurrentDirectory(previousCwd);
-                }
+                var migrationOptions = new DbContextOptionsBuilder<ChatDbContext>()
+                    .UseSqlite($"Data Source={dbPath};Cache=Shared;Foreign Keys=true")
+                    .Options;
+                await using var migCtx = new ChatDbContext(migrationOptions);
+                await migCtx.Database.MigrateAsync();
+
+                // Mismas PRAGMA que aplica el arranque normal del servidor
+                // (PersistenceExtensions.InitializeChatDatabaseAsync).
+                await migCtx.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+                await migCtx.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;");
             }
 
             var attachmentCount = manifest.Files.Count(f =>

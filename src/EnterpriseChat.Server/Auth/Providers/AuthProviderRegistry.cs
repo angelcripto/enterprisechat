@@ -93,18 +93,18 @@ public sealed class AuthProviderRegistry
         switch (row.Kind)
         {
             case AuthProviderKind.Mysql:
-            {
-                var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
-                    ?? throw new InvalidOperationException("ConfigJson de MySQL vacío.");
-                var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
-                    ? "{}"
-                    : _crypto.DecryptString(row.EncryptedSecretsJson);
-                var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
-                    ?? new MySqlProviderSecrets();
-                var verifier = _verifiers.Get(row.HashAlgorithm);
-                return new MySqlAuthProvider(
-                    row.Id, row.DisplayName, pub, secrets, row.HashAlgorithm, verifier);
-            }
+                {
+                    var pub = JsonSerializer.Deserialize<MySqlProviderPublicConfig>(row.ConfigJson, JsonOptions)
+                        ?? throw new InvalidOperationException("ConfigJson de MySQL vacío.");
+                    var secretsJson = string.IsNullOrEmpty(row.EncryptedSecretsJson)
+                        ? "{}"
+                        : _crypto.DecryptString(row.EncryptedSecretsJson);
+                    var secrets = JsonSerializer.Deserialize<MySqlProviderSecrets>(secretsJson, JsonOptions)
+                        ?? new MySqlProviderSecrets();
+                    var verifier = _verifiers.Get(row.HashAlgorithm);
+                    return new MySqlAuthProvider(
+                        row.Id, row.DisplayName, pub, secrets, row.HashAlgorithm, verifier);
+                }
             case AuthProviderKind.Internal:
                 // Internal no debería persistirse, pero por seguridad lo
                 // ignoramos si aparece.

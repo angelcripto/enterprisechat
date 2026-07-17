@@ -12,7 +12,28 @@ import { threadKeyId } from "@/api/types";
 export const useMessagesStore = defineStore("messages", () => {
     const byThread = reactive<Record<string, ChatMessage[]>>({});
     const loadingThreads = reactive<Record<string, boolean>>({});
-    const typingByThread = reactive<Record<string, Set<number>>>({});
+
+    /**
+     * Quién está escribiendo, por hilo: `{ "dm:7": { 7: 1739284… } }`
+     * (hilo → id de usuario → instante del último aviso).
+     *
+     * Es un objeto plano a propósito, no un `Set`. Un `Set` dentro de
+     * `reactive()` tiene una trampa: al crearlo con
+     * `x[id] ?? (x[id] = new Set())`, la expresión devuelve el Set CRUDO en vez
+     * del proxy reactivo, y mutarlo después no repinta nada. Los objetos planos
+     * no tienen ese problema, y de paso guardar la marca de tiempo permite
+     * depurar cuándo llegó el último aviso.
+     */
+    const typingByThread = reactive<Record<string, Record<number, number>>>({});
+
+    /** Temporizadores de expiración, fuera del estado reactivo: son detalle de
+     *  implementación y no deben provocar repintados. Clave: `"{hilo}:{userId}"`. */
+    const typingTimers: Record<string, number> = {};
+
+    /** El emisor refresca su aviso cada 2s; 3,5s da margen a una pulsación
+     *  perdida sin dejar el indicador colgado si el otro cierra la pestaña. */
+    const TYPING_TTL_MS = 3500;
+
     const readCursors = reactive<Record<string, number>>({});
     const currentUserId = ref<number | null>(null);
 
@@ -70,7 +91,18 @@ export const useMessagesStore = defineStore("messages", () => {
         }
     }
 
-    function applyTyping(fromUserId: number, toUserId: number | null, roomId: number | null): void {
+    /**
+     * Aplica un aviso de "está escribiendo" recibido del hub.
+     *
+     * `isTyping: false` lo borra al instante (el emisor envió el mensaje o vació
+     * el cuadro). Si no llega ese aviso, el temporizador lo retira solo.
+     */
+    function applyTyping(
+        fromUserId: number,
+        toUserId: number | null,
+        roomId: number | null,
+        isTyping = true,
+    ): void {
         // The server already routes typing events to peers/room members, but a
         // user with two tabs (web + another web) could echo their own typing
         // through both connections. Drop our own id defensively at store level
@@ -82,11 +114,48 @@ export const useMessagesStore = defineStore("messages", () => {
             ? { kind: "room", roomId }
             : { kind: "dm", peerUserId: fromUserId };
         const id = threadKeyId(key);
-        const set = typingByThread[id] ?? (typingByThread[id] = new Set());
-        set.add(fromUserId);
-        // Auto-expire typing indicator after 3.5s of silence.
-        window.setTimeout(() => { set.delete(fromUserId); }, 3500);
+
+        if (!isTyping) {
+            clearTyping(id, fromUserId);
+            void toUserId;
+            return;
+        }
+
+        // OJO: hay que escribir SIEMPRE a través de `typingByThread[id]`, nunca
+        // sobre una referencia local guardada antes. El valor de una asignación
+        // en JavaScript es el objeto CRUDO asignado, no el proxy reactivo que
+        // Vue devuelve al leer la clave. Guardar esa referencia y mutarla
+        // después cambia el dato pero NO repinta la pantalla: ese era el bug
+        // que dejaba el "está escribiendo…" clavado para siempre.
+        if (typingByThread[id] === undefined) {
+            typingByThread[id] = {};
+        }
+        typingByThread[id]![fromUserId] = Date.now();
+
+        // Un temporizador por (hilo, usuario), reiniciado en cada aviso. Antes
+        // cada pulsación programaba su propio setTimeout sin cancelar el
+        // anterior: con el throttle de 2s del emisor, el timer del primer aviso
+        // borraba el indicador a los 3,5s aunque siguieras escribiendo → parpadeo.
+        const timerKey = `${id}:${fromUserId}`;
+        window.clearTimeout(typingTimers[timerKey]);
+        typingTimers[timerKey] = window.setTimeout(
+            () => { clearTyping(id, fromUserId); },
+            TYPING_TTL_MS,
+        );
         void toUserId;
+    }
+
+    function clearTyping(threadId: string, userId: number): void {
+        const timerKey = `${threadId}:${userId}`;
+        window.clearTimeout(typingTimers[timerKey]);
+        delete typingTimers[timerKey];
+
+        const thread = typingByThread[threadId];
+        if (thread === undefined) return;
+        delete thread[userId];
+        if (Object.keys(thread).length === 0) {
+            delete typingByThread[threadId];
+        }
     }
 
     function directPeer(m: ChatMessage): number {

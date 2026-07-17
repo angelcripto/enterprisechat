@@ -10,11 +10,11 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace EnterpriseChat.Tests.Server;
 
-public sealed class SearchTests : IClassFixture<ChatServerFactory>
+public sealed class SearchTests : IClassFixture<LicensedChatServerFactory>
 {
-    private readonly ChatServerFactory _factory;
+    private readonly LicensedChatServerFactory _factory;
 
-    public SearchTests(ChatServerFactory factory)
+    public SearchTests(LicensedChatServerFactory factory)
     {
         _factory = factory;
     }

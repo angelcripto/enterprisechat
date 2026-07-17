@@ -1,4 +1,5 @@
-import { CheckCircle2, XCircle, AlertTriangle, Info, HelpCircle, type Component } from "lucide-vue-next";
+import { CheckCircle2, XCircle, AlertTriangle, Info, HelpCircle } from "lucide-vue-next";
+import type { Component } from "vue";
 import type { DialogIcon } from "@/stores/dialogs";
 
 /**

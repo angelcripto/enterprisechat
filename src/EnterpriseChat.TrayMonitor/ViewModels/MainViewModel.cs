@@ -68,26 +68,26 @@ public sealed partial class MainViewModel : ObservableObject
     public string TrayTooltip => $"EnterpriseChat — {StatusLabel}";
 
     public bool ServiceInstalled => Status != ServiceStatus.NotInstalled;
-    public bool IsRunning        => Status == ServiceStatus.Running;
+    public bool IsRunning => Status == ServiceStatus.Running;
 
     public string StatusLabel => Status switch
     {
         ServiceStatus.NotInstalled => "Servicio no instalado",
-        ServiceStatus.Running      => "Activo",
-        ServiceStatus.Stopped      => "Detenido",
-        ServiceStatus.Starting     => "Arrancando…",
-        ServiceStatus.Stopping     => "Deteniéndose…",
-        ServiceStatus.Pending      => "Esperando…",
-        _                          => "Desconocido",
+        ServiceStatus.Running => "Activo",
+        ServiceStatus.Stopped => "Detenido",
+        ServiceStatus.Starting => "Arrancando…",
+        ServiceStatus.Stopping => "Deteniéndose…",
+        ServiceStatus.Pending => "Esperando…",
+        _ => "Desconocido",
     };
 
     public string StatusColor => Status switch
     {
-        ServiceStatus.Running                                => "#22863a",
-        ServiceStatus.Stopped or ServiceStatus.NotInstalled  => "#cb2431",
+        ServiceStatus.Running => "#22863a",
+        ServiceStatus.Stopped or ServiceStatus.NotInstalled => "#cb2431",
         ServiceStatus.Starting or ServiceStatus.Stopping or
-        ServiceStatus.Pending                                => "#b08800",
-        _                                                    => "#6a737d",
+        ServiceStatus.Pending => "#b08800",
+        _ => "#6a737d",
     };
 
     public MainViewModel()
@@ -264,8 +264,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanStart()   => !IsBusy && IsAdmin && Status == ServiceStatus.Stopped;
-    private bool CanStop()    => !IsBusy && IsAdmin && Status == ServiceStatus.Running;
+    private bool CanStart() => !IsBusy && IsAdmin && Status == ServiceStatus.Stopped;
+    private bool CanStop() => !IsBusy && IsAdmin && Status == ServiceStatus.Running;
     private bool CanRestart() => !IsBusy && IsAdmin && Status == ServiceStatus.Running;
     private bool CanRefresh() => !IsBusy;
 

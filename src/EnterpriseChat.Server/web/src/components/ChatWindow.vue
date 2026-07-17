@@ -38,8 +38,8 @@ const isLoading = computed(() => messages.loadingThreads[threadKeyId(props.threa
 </script>
 
 <template>
-    <div class="flex flex-col h-full bg-white">
-        <header class="px-6 py-3 border-b border-slate-200 flex items-center gap-3">
+    <div class="flex flex-col h-full min-h-0 bg-white">
+        <header class="px-6 py-3 border-b border-slate-200 flex items-center gap-3 flex-shrink-0">
             <div class="flex flex-col leading-tight">
                 <strong class="text-slate-900">
                     <span v-if="thread.kind === 'room'" class="text-slate-400">#</span>
@@ -51,11 +51,17 @@ const isLoading = computed(() => messages.loadingThreads[threadKeyId(props.threa
 
         <PinnedRibbon v-if="thread.kind === 'room'" :room-id="thread.roomId" />
 
-        <div class="flex-1 overflow-hidden">
+        <!-- `min-h-0` es obligatorio, no cosmético: sin él, un hijo flexible se
+             niega a encoger por debajo de su contenido, la lista de mensajes
+             desborda hacia abajo empujando al cuadro de escribir fuera de la
+             pantalla, y el scroll acaba en el contenedor equivocado (o en
+             ninguno). Es la misma causa raíz que el scroll bloqueado del panel
+             de administración. -->
+        <div class="flex-1 min-h-0 overflow-hidden">
             <div v-if="isLoading" class="h-full grid place-items-center text-sm text-slate-500">Cargando historial…</div>
             <MessageList v-else :thread="thread" />
         </div>
 
-        <MessageInput :thread="thread" />
+        <MessageInput :thread="thread" class="flex-shrink-0" />
     </div>
 </template>

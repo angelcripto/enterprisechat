@@ -56,9 +56,9 @@ public sealed record MySqlProviderSecrets
 
 public enum MySqlTlsMode
 {
-    None       = 0,
-    Preferred  = 1,
-    Required   = 2,
-    VerifyCa   = 3,
+    None = 0,
+    Preferred = 1,
+    Required = 2,
+    VerifyCa = 3,
     VerifyFull = 4,
 }

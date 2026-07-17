@@ -1,6 +1,9 @@
+using EnterpriseChat.Licensing.Abstractions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EnterpriseChat.Tests.Server;
 
@@ -9,7 +12,7 @@ namespace EnterpriseChat.Tests.Server;
 /// database to a unique temp path that is deleted on dispose, so tests are
 /// fully isolated.
 /// </summary>
-public sealed class ChatServerFactory : WebApplicationFactory<Program>
+public class ChatServerFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(),
@@ -20,9 +23,32 @@ public sealed class ChatServerFactory : WebApplicationFactory<Program>
 
     public string DbPath => _dbPath;
 
+    /// <summary>
+    /// Tope de cuentas del host de test. <c>null</c> deja el validador real, que
+    /// en un servidor sin serial activado es el Free anónimo
+    /// (<see cref="FreeLicenseValidator.FreeUserCap"/> cuentas).
+    ///
+    /// Los tests que necesitan más cuentas que ese tope y NO están probando
+    /// licenciamiento usan <see cref="LicensedChatServerFactory"/>. El
+    /// licenciamiento tiene sus propios tests dedicados
+    /// (FreeLicenseValidatorTests, ConcurrentSessionCounterTests) y el endpoint
+    /// /license lo cubre HostBootstrapSmokeTests contra el validador real, así
+    /// que subir el tope aquí no deja nada sin verificar.
+    /// </summary>
+    protected virtual int? LicenseCapOverride => null;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+
+        if (LicenseCapOverride is int cap)
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<ILicenseValidator>();
+                services.AddSingleton<ILicenseValidator>(new FixedCapLicenseValidator(cap));
+            });
+        }
 
         // Por defecto el host de tests apunta a `bin/Debug/net8.0/wwwroot`
         // del runner, que no existe (el SPA se construye en el csproj del
@@ -84,4 +110,43 @@ public sealed class ChatServerFactory : WebApplicationFactory<Program>
             }
         }
     }
+}
+
+/// <summary>
+/// Host de test con una licencia holgada. Lo usan las clases que crean más
+/// cuentas que el tope Free anónimo porque comparten una única BD entre todos
+/// sus <c>[Fact]</c> (IClassFixture) y por tanto los usuarios se acumulan:
+/// RoomsIntegrationTests crea 6 + admin, SearchTests 5 + admin.
+///
+/// Sin esto fallan con 403 al crear el sexto usuario, que es el
+/// comportamiento CORRECTO del producto — pero esos tests van de salas y
+/// búsqueda, no de licenciamiento.
+/// </summary>
+public sealed class LicensedChatServerFactory : ChatServerFactory
+{
+    protected override int? LicenseCapOverride => 100;
+}
+
+/// <summary>Validador de licencia de test: tope fijo, sin caducidad.</summary>
+internal sealed class FixedCapLicenseValidator : ILicenseValidator
+{
+    private readonly int _cap;
+
+    public FixedCapLicenseValidator(int cap)
+    {
+        _cap = cap;
+        Current = new LicenseInfo(
+            Edition: LicenseEdition.Pro,
+            MaxConcurrentUsers: cap,
+            ExpiresAt: null,
+            LicensedTo: "Suite de tests",
+            LicenseId: null);
+    }
+
+    public LicenseInfo Current { get; }
+
+    public LicenseAdmissionResult TryAdmitSession(int currentActiveSessions)
+        => currentActiveSessions < _cap
+            ? LicenseAdmissionResult.Allow()
+            : LicenseAdmissionResult.Deny($"Test: límite de {_cap} alcanzado.");
 }

@@ -19,8 +19,8 @@ namespace EnterpriseChat.Server.Crypto;
 public sealed class AppCrypto
 {
     private const int NonceBytes = 12;
-    private const int TagBytes   = 16;
-    private const int KeyBytes   = 32; // AES-256
+    private const int TagBytes = 16;
+    private const int KeyBytes = 32; // AES-256
 
     private readonly byte[] _key;
 
@@ -96,9 +96,9 @@ public sealed class AppCrypto
         aes.Encrypt(nonce, plaintext, ciphertext, tag);
 
         var blob = new byte[NonceBytes + ciphertext.Length + TagBytes];
-        Buffer.BlockCopy(nonce,      0, blob, 0,                          NonceBytes);
-        Buffer.BlockCopy(ciphertext, 0, blob, NonceBytes,                 ciphertext.Length);
-        Buffer.BlockCopy(tag,        0, blob, NonceBytes + ciphertext.Length, TagBytes);
+        Buffer.BlockCopy(nonce, 0, blob, 0, NonceBytes);
+        Buffer.BlockCopy(ciphertext, 0, blob, NonceBytes, ciphertext.Length);
+        Buffer.BlockCopy(tag, 0, blob, NonceBytes + ciphertext.Length, TagBytes);
         return blob;
     }
 
@@ -109,9 +109,9 @@ public sealed class AppCrypto
             throw new CryptographicException("Blob cifrado corrupto (longitud insuficiente).");
         }
 
-        var nonce       = blob.Slice(0, NonceBytes);
-        var ciphertext  = blob.Slice(NonceBytes, blob.Length - NonceBytes - TagBytes);
-        var tag         = blob.Slice(blob.Length - TagBytes, TagBytes);
+        var nonce = blob.Slice(0, NonceBytes);
+        var ciphertext = blob.Slice(NonceBytes, blob.Length - NonceBytes - TagBytes);
+        var tag = blob.Slice(blob.Length - TagBytes, TagBytes);
 
         var plaintext = new byte[ciphertext.Length];
         using var aes = new AesGcm(_key, TagBytes);

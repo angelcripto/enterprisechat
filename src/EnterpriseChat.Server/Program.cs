@@ -188,7 +188,16 @@ try
 
     // Pre-bind check so port-in-use is reported with a friendly message
     // before Kestrel throws a noisy stack trace.
-    if (!PortAvailabilityCheck.TryEnsureAvailable(app.Configuration, out _))
+    //
+    // Se salta en Testing: WebApplicationFactory sirve con TestServer in-process
+    // y NUNCA enlaza un puerto real, así que aquí la comprobación no sólo sobra
+    // — es dañina. Con el servidor de desarrollo o el servicio de producción
+    // escuchando en :5080, el pre-check fallaba, este `return` dejaba la app sin
+    // construir y TODA la suite se caía con un
+    // "The server has not been started or no web application was configured"
+    // que no apunta a la causa por ningún lado.
+    if (!app.Environment.IsEnvironment("Testing")
+        && !PortAvailabilityCheck.TryEnsureAvailable(app.Configuration, out _))
     {
         PortAvailabilityCheck.WaitForExitKey();
         Environment.ExitCode = 2;

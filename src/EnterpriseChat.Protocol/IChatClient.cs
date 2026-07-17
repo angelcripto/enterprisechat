@@ -30,6 +30,18 @@ public interface IChatClient
     Task OnTyping(int fromUserId, int? toUserId, int? roomId);
 
     /// <summary>
+    /// Sent when the sender stops typing (message sent, or input cleared), so
+    /// recipients can drop the indicator immediately instead of waiting for the
+    /// silence timeout to expire.
+    ///
+    /// Deliberately a separate callback rather than a flag on
+    /// <see cref="OnTyping"/>: adding a parameter to an existing callback breaks
+    /// clients at runtime (SignalR argument binding), not at compile time.
+    /// Clients that don't register this one just ignore it.
+    /// </summary>
+    Task OnTypingStopped(int fromUserId, int? toUserId, int? roomId);
+
+    /// <summary>
     /// Sent immediately before the server aborts the connection because the
     /// licence cap was reached. The client should display <paramref name="reason"/>
     /// to the user and stop reconnect attempts.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { Menu, X } from "lucide-vue-next";
+import { X } from "lucide-vue-next";
 import Sidebar from "@/components/Sidebar.vue";
 import TopBar from "@/components/TopBar.vue";
 import RightPanel from "@/components/RightPanel.vue";
@@ -30,8 +30,12 @@ watch(() => route.fullPath, () => { drawerOpen.value = false; });
 
 <template>
     <!-- Mismo layout que ChatView: TopBar arriba, sidebar 260px, main 1fr, RightPanel 320px. -->
-    <div class="h-screen grid grid-cols-[260px_minmax(0,1fr)_320px] grid-rows-[56px_1fr] bg-slate-50 overflow-hidden">
-        <TopBar class="col-span-3 row-start-1 border-b border-slate-200" />
+    <!-- Columnas por breakpoint. Antes eran fijas (260px + 320px SIEMPRE), así que
+         en ventanas estrechas se reservaban 580px de adorno aunque la barra
+         izquierda estuviera oculta (`hidden md:flex`), y lo que sobraba lo
+         recortaba el `overflow-hidden` sin dejar barra de scroll. -->
+    <div class="h-screen grid grid-cols-[minmax(0,1fr)] md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)_320px] grid-rows-[56px_1fr] bg-slate-50 overflow-hidden">
+        <TopBar class="col-span-full row-start-1 border-b border-slate-200" />
         <Sidebar class="hidden md:flex row-start-2 border-r border-slate-200 overflow-hidden" />
 
         <Teleport to="body">
@@ -48,11 +52,19 @@ watch(() => route.fullPath, () => { drawerOpen.value = false; });
             </transition>
         </Teleport>
 
-        <main class="row-start-2 col-start-1 md:col-start-2 min-w-0 overflow-hidden flex flex-col">
+        <!-- `overflow-y-auto`, NO `overflow-hidden`. Aquí el que scrollea es el
+             propio panel: los formularios de administración crecen (p.ej. al
+             pulsar "conectar y descubrir esquema" en /manage/auth-providers
+             aparecen los campos del esquema) y con `overflow-hidden` lo que
+             sobresalía se recortaba sin barra de scroll — inalcanzable.
+
+             Ojo: en el layout del CHAT sí toca `overflow-hidden`, porque allí
+             quien scrollea es la lista de mensajes. Son dos casos distintos. -->
+        <main class="row-start-2 col-start-1 md:col-start-2 min-w-0 min-h-0 overflow-y-auto flex flex-col">
             <router-view />
         </main>
 
-        <RightPanel class="row-start-2 col-start-3 border-l border-slate-200 overflow-hidden" :thread="null" />
+        <RightPanel class="hidden lg:flex row-start-2 col-start-3 border-l border-slate-200 overflow-hidden" :thread="null" />
     </div>
 </template>
 

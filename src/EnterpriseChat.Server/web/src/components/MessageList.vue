@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { Paperclip, Download, SmilePlus, Pin, Bookmark, MoreHorizontal } from "lucide-vue-next";
+import { Paperclip, Download, SmilePlus, Pin, Bookmark, MoreHorizontal, ArrowDown } from "lucide-vue-next";
 import EmojiPicker from "vue3-emoji-picker";
 import "vue3-emoji-picker/css";
 import { useAuthStore } from "@/stores/auth";
@@ -36,9 +36,14 @@ const saved = useSavedStore();
 const scrollEl = ref<HTMLDivElement | null>(null);
 const items = computed(() => messages.get(props.thread));
 
-const typingSet = computed(() => messages.typingByThread[threadKeyId(props.thread)] ?? new Set<number>());
+/** Han llegado mensajes mientras leías más arriba: muestra el botón de bajar. */
+const hasNewBelow = ref(false);
+
 const typingNames = computed(() => {
-    return [...typingSet.value]
+    const thread = messages.typingByThread[threadKeyId(props.thread)];
+    if (thread === undefined) return [];
+    return Object.keys(thread)
+        .map(Number)
         .filter((id) => id !== auth.userId)
         .map((id) => users.findById(id)?.fullName ?? "Alguien")
         .slice(0, 3);
@@ -160,21 +165,97 @@ function onDocumentClick(e: MouseEvent): void {
     }
 }
 
-watch(items, async () => {
-    await nextTick();
-    if (scrollEl.value !== null) {
-        scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
+/** Margen para considerar que el usuario "está abajo". Un par de píxeles de
+ *  diferencia por redondeo de zoom no deben contar como "se ha ido a leer". */
+const NEAR_BOTTOM_PX = 80;
+
+function isNearBottom(el: HTMLElement): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
+}
+
+function scrollToBottom(smooth = false): void {
+    const el = scrollEl.value;
+    if (el === null) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    hasNewBelow.value = false;
+}
+
+/** Si el usuario baja del todo a mano, el aviso de mensajes nuevos sobra. */
+function onScroll(): void {
+    const el = scrollEl.value;
+    if (el !== null && isNearBottom(el)) {
+        hasNewBelow.value = false;
     }
-    const last = items.value[items.value.length - 1];
+}
+
+// Se lleva la cuenta a mano en vez de comparar (next, prev): con `deep: true`
+// ambos apuntan al MISMO array (applyIncoming hace push sobre el existente),
+// así que `next.length > prev.length` nunca sería cierto.
+let lastCount = 0;
+
+watch(items, async () => {
+    // flush "pre": el DOM todavía NO tiene el mensaje nuevo, así que esto mide
+    // dónde estaba el usuario ANTES de que la lista creciera. Con "post" ya sería
+    // tarde: el scroll habría cambiado de sitio y todo parecería "no estaba abajo".
+    const el = scrollEl.value;
+    const wasAtBottom = el === null || isNearBottom(el);
+
+    const count = items.value.length;
+    const grew = count > lastCount;
+    lastCount = count;
+
+    const last = items.value[count - 1];
+    const lastIsMine = last !== undefined && last.fromUserId === auth.userId;
+
+    await nextTick();
+
+    // Bajar sólo si ya estabas abajo, o si el mensaje nuevo es tuyo (acabas de
+    // enviarlo: siempre quieres verlo). Si estabas leyendo historial más arriba,
+    // no te movemos: te avisamos con el botón.
+    if (wasAtBottom || (grew && lastIsMine)) {
+        scrollToBottom();
+    } else if (grew) {
+        hasNewBelow.value = true;
+    }
+
     if (last !== undefined && last.serverId !== null && last.serverId !== undefined && last.fromUserId !== auth.userId) {
         try { await chatHub.markAsRead(last.serverId); } catch { /* ignore */ }
     }
     scheduleReactionsLoad();
-}, { deep: true, flush: "post", immediate: true });
+}, { deep: true, flush: "pre", immediate: true });
+
+// El aviso de "escribiendo…" también cambia la altura de la lista. Si estabas
+// abajo, hay que seguir abajo cuando aparece o desaparece.
+watch(typingNames, async () => {
+    const el = scrollEl.value;
+    if (el === null || !isNearBottom(el)) return;
+    await nextTick();
+    scrollToBottom();
+});
+
+// Al cambiar de conversación se entra siempre por el final, como en WhatsApp.
+watch(() => props.thread, async () => {
+    hasNewBelow.value = false;
+    lastCount = 0;
+    await nextTick();
+    scrollToBottom();
+});
 </script>
 
 <template>
-    <div ref="scrollEl" class="h-full overflow-y-auto px-6 py-4 flex flex-col gap-2">
+    <!--
+      Layout tipo WhatsApp: la conversación reposa sobre el cuadro de escribir y
+      crece hacia arriba. El scroll vive en el contenedor exterior; el interior
+      lleva `min-h-full` + `justify-end` para empujar el contenido al fondo
+      cuando hay pocos mensajes.
+
+      Ojo: `justify-end` va en el envoltorio INTERIOR, nunca en el contenedor con
+      scroll — ahí deja los mensajes de arriba inalcanzables en Chrome y Firefox.
+      El padding también va dentro: con box-sizing:border-box entra en el 100% de
+      `min-h-full`, si no aparecería una barra de scroll fantasma con la lista vacía.
+    -->
+    <div ref="scrollEl" class="relative h-full min-h-0 overflow-y-auto" @scroll.passive="onScroll">
+      <div class="flex flex-col gap-2 min-h-full justify-end px-6 py-4">
         <div v-if="items.length === 0" class="m-auto text-slate-400 text-sm">
             Sin mensajes todavía. Escribe algo abajo para iniciar la conversación.
         </div>
@@ -344,5 +425,35 @@ watch(items, async () => {
             </span>
             {{ typingNames.join(", ") }} {{ typingNames.length === 1 ? "está" : "están" }} escribiendo…
         </div>
+      </div>
+
+      <!-- Aviso de mensajes nuevos cuando llegan y estás leyendo más arriba.
+           `sticky bottom-4` lo ancla al viewport del scroll sin sacarlo del
+           flujo, así no tapa el último mensaje ni necesita que el contenedor
+           sea `relative`. -->
+      <Transition name="fade">
+        <div v-if="hasNewBelow" class="sticky bottom-4 flex justify-center pointer-events-none">
+          <button
+            type="button"
+            class="pointer-events-auto flex items-center gap-1.5 rounded-full bg-blue-600 text-white text-xs font-medium px-3 py-1.5 shadow-lg hover:bg-blue-700"
+            @click="scrollToBottom(true)"
+          >
+            <ArrowDown class="w-3.5 h-3.5" />
+            Mensajes nuevos
+          </button>
+        </div>
+      </Transition>
     </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+</style>

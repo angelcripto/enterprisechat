@@ -8,7 +8,7 @@ namespace EnterpriseChat.Server.Auth.Providers;
 public enum AuthProviderKind
 {
     Internal = 0,
-    Mysql    = 1,
-    Csv      = 2,
-    Http     = 3,
+    Mysql = 1,
+    Csv = 2,
+    Http = 3,
 }

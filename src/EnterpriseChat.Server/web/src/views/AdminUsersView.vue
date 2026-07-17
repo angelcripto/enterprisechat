@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowLeft, Users, UserCheck, UserX, Pencil, KeyRound, Power, Trash2, Plus } from "lucide-vue-next";
+import { Users, UserCheck, UserX, Pencil, KeyRound, Power, Trash2, Plus } from "lucide-vue-next";
 import { api } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import { useDialogsStore } from "@/stores/dialogs";

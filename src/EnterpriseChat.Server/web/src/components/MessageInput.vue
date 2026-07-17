@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { Paperclip, Smile, Send } from "lucide-vue-next";
 import { useMessagesStore } from "@/stores/messages";
 import { useDraftsStore } from "@/stores/drafts";
@@ -37,6 +37,7 @@ async function send(): Promise<void> {
         await messages.sendText(props.thread, text);
         body.value = "";
         drafts.clear(props.thread);
+        notifyStoppedTyping();
     } catch (err) {
         error.value = err instanceof Error ? err.message : "No se pudo enviar.";
     } finally {
@@ -48,19 +49,55 @@ function onKeyDown(e: KeyboardEvent): void {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         void send();
+    }
+}
+
+/** Se escucha `input` y no `keydown`: pegar con el ratón, dictar, autocompletar
+ *  o escribir con IME no generan pulsaciones de tecla, y antes no avisaban. */
+function onInput(): void {
+    if (body.value.trim() === "") {
+        notifyStoppedTyping();
     } else {
         notifyTyping();
     }
+}
+
+function threadTarget(): { toUserId: number | null; roomId: number | null } {
+    return {
+        toUserId: props.thread.kind === "dm" ? props.thread.peerUserId : null,
+        roomId: props.thread.kind === "room" ? props.thread.roomId : null,
+    };
 }
 
 function notifyTyping(): void {
     const now = Date.now();
     if (now - typingThrottle < 2000) return;
     typingThrottle = now;
-    const toUserId = props.thread.kind === "dm" ? props.thread.peerUserId : null;
-    const roomId = props.thread.kind === "room" ? props.thread.roomId : null;
-    void chatHub.typing(toUserId, roomId);
+    const { toUserId, roomId } = threadTarget();
+    void chatHub.typing(toUserId, roomId).catch(() => { /* aviso best-effort */ });
 }
+
+/** Retira el indicador en el otro lado al instante, sin esperar a que expire su
+ *  temporizador. Resetea el throttle para que el siguiente tecleo avise ya. */
+function notifyStoppedTyping(): void {
+    typingThrottle = 0;
+    const { toUserId, roomId } = threadTarget();
+    void chatHub.typingStopped(toUserId, roomId).catch(() => { /* best-effort */ });
+}
+
+// Al cambiar de conversación o desmontar, avisar de que ya no escribimos ahí:
+// si no, el indicador se queda colgado en el otro lado hasta que expire.
+watch(() => props.thread, (_next, prev) => {
+    if (prev === undefined) return;
+    const toUserId = prev.kind === "dm" ? prev.peerUserId : null;
+    const roomId = prev.kind === "room" ? prev.roomId : null;
+    typingThrottle = 0;
+    void chatHub.typingStopped(toUserId, roomId).catch(() => { /* best-effort */ });
+});
+
+onBeforeUnmount(() => {
+    if (body.value.trim() !== "") notifyStoppedTyping();
+});
 
 function openFilePicker(): void {
     fileInput.value?.click();
@@ -107,6 +144,7 @@ async function onFileSelected(ev: Event): Promise<void> {
                 placeholder="Escribe un mensaje…"
                 class="flex-1 resize-none bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none max-h-40 leading-6 py-1.5"
                 @keydown="onKeyDown"
+                @input="onInput"
             ></textarea>
             <button type="button" class="text-slate-400 p-1 opacity-50 flex-shrink-0" aria-label="Emoji (próximamente)" disabled>
                 <Smile class="w-4 h-4" />
