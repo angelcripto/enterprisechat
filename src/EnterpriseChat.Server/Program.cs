@@ -32,6 +32,20 @@ try
         return;
     }
 
+    var backupRequested = EnterpriseChat.Server.Bootstrap.BackupCli.TryExtractBackup(args, out var backupPath, out var backupForce, out args);
+    if (backupRequested)
+    {
+        Environment.ExitCode = await EnterpriseChat.Server.Bootstrap.BackupCli.RunBackupAsync(backupPath, backupForce, AppContext.BaseDirectory);
+        return;
+    }
+
+    var restoreRequested = EnterpriseChat.Server.Bootstrap.BackupCli.TryExtractRestore(args, out var restorePath, out var restoreYes, out args);
+    if (restoreRequested)
+    {
+        Environment.ExitCode = await EnterpriseChat.Server.Bootstrap.BackupCli.RunRestoreAsync(restorePath, restoreYes, AppContext.BaseDirectory);
+        return;
+    }
+
     EnterpriseChat.Server.Bootstrap.InteractiveLauncher.RunIfInteractive(args, Directory.GetCurrentDirectory());
 
     Log.Information("EnterpriseChat.Server arrancando.");

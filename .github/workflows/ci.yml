@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -35,8 +35,11 @@ jobs:
       - name: Format check
         run: dotnet format EnterpriseChat.sln --verify-no-changes --no-restore
 
+      # RunSpaTypeCheck=true es obligatorio aquí: BuildVueSpa ejecuta `npx vite build`,
+      # y Vite transpila TypeScript SIN comprobar tipos. Sin este flag, un error de tipos
+      # en el SPA compila verde en local y en CI pese a tener `strict: true`.
       - name: Build
-        run: dotnet build EnterpriseChat.sln --no-restore --configuration Release
+        run: dotnet build EnterpriseChat.sln --no-restore --configuration Release -p:RunSpaTypeCheck=true
 
       - name: Test
         run: dotnet test EnterpriseChat.sln --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
@@ -49,7 +52,7 @@ jobs:
           path: TestResults
 
   build-linux-server:
-    name: Build server on Linux
+    name: Build and test server on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,3 +67,19 @@ jobs:
 
       - name: Build server (Release)
         run: dotnet build src/EnterpriseChat.Server/EnterpriseChat.Server.csproj --no-restore --configuration Release
+
+      # El proyecto de tests es net8.0 y no referencia WPF, así que corre en Linux.
+      # systemd es una plataforma soportada: sin esto, todo el comportamiento Linux del
+      # servidor (rutas, WAL de SQLite, permisos de data/master.key) queda sin cobertura.
+      - name: Restore tests
+        run: dotnet restore tests/EnterpriseChat.Tests/EnterpriseChat.Tests.csproj
+
+      - name: Test (Release)
+        run: dotnet test tests/EnterpriseChat.Tests/EnterpriseChat.Tests.csproj --configuration Release --logger "trx;LogFileName=test-results-linux.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux
+          path: TestResults
